@@ -6,7 +6,7 @@
 
 Windows V2 目前为 **Alpha 试用版**，使用 C++ 引擎、Vulkan 和 LibRaw。部分功能与出图仍与最新版 macOS 存在差异：本地测试已渲染 6×6 片边预览，后续切换画幅并导出的完整流程尚未验证。构建和发布信息见 [Windows 安装包说明](desktop/docs/WINDOWS-INSTALLER.md)与 [Windows 发布流程](desktop/docs/WINDOWS-RELEASES.md)。
 
-本分支尚未在 GitHub 发布安装包。下方链接的上游 Windows beta 是独立的旧版本，并非本分支当前构建。以下内容继承自上游项目，除标注 Windows 的部分外，描述的是其 Mac 版本。
+本分支的 Windows 版本可从 [GitHub Releases](https://github.com/zhao-hang-yu/SpektraLab-Windows/releases) 下载。下方链接的上游 Windows beta 是独立的旧版本。以下内容继承自上游项目，除标注 Windows 的部分外，描述的是其 Mac 版本。
 
 ![SpektraLab：曼哈顿下城，Kodak Portra 160 胶片，Kodak Vision 2383 放映拷贝片](screenshots/Screenshot_ZH_HANS.png)
 

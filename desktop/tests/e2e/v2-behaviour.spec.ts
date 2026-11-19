@@ -34,6 +34,32 @@ test('the paper grid scrolls with the mouse wheel and shows the whole last card'
   })).toBe(true);
 });
 
+test('digital intermediate is a distinct paper choice and switches cleanly', async ({ page }) => {
+  await open(page, '&allFeatures=1');
+  const di = page.getByTestId('paper-cards').locator('[data-stock="digital-intermediate"]');
+  const paper = page.locator('[data-stock="kodak_portra_endura"]');
+  const scan = page.getByTestId('paper-cards').locator('[data-stock="none"]');
+  await expect(di).toBeEnabled();
+  await di.click();
+  await expect(di).toHaveAttribute('aria-selected', 'true');
+  await expect(paper).toHaveAttribute('aria-selected', 'false');
+  await expect.poll(() => state(page, '[s.sidecar.params.digitalIntermediate, s.sidecar.params.scanFilm]')).toEqual([true, false]);
+  await page.getByTestId('section-more-filmPaper').click();
+  await expect(page.getByRole('menuitem', { name: 'Use These Stocks for New Photos' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await paper.click();
+  await expect(paper).toHaveAttribute('aria-selected', 'true');
+  await expect(di).toHaveAttribute('aria-selected', 'false');
+  await expect.poll(() => state(page, '[s.sidecar.params.digitalIntermediate, s.sidecar.params.scanFilm]')).toEqual([false, false]);
+  await scan.click();
+  await expect(scan).toHaveAttribute('aria-selected', 'true');
+  await di.click();
+  await expect.poll(() => state(page, '[s.sidecar.params.digitalIntermediate, s.sidecar.params.scanFilm]')).toEqual([true, false]);
+  await page.locator('[data-stock="kodak_ektachrome_100"]').click();
+  await expect(di).toBeDisabled();
+  await expect(scan).toHaveAttribute('aria-selected', 'true');
+});
+
 test('film and paper favourites stay at the front and defaults apply to the next new photo', async ({ page }) => {
   await page.goto(`/?open=${encodeURIComponent(ROLL)}`);
   await expect(status(page)).toContainText(/Developed|Edited/, { timeout: 20_000 });

@@ -6,7 +6,7 @@ This repository is a Windows-focused fork of [JamesQiu2005/SpektraLab](https://g
 
 The Windows V2 build is an **alpha**. It uses the C++ engine with Vulkan and LibRaw. Some features and output still differ from the current macOS edition; the 6×6 film-edge preview rendered in local testing, but the subsequent format-switch and export workflow has not yet been fully verified. See [the Windows installer notes](desktop/docs/WINDOWS-INSTALLER.md) and [Windows release process](desktop/docs/WINDOWS-RELEASES.md).
 
-No installer for this fork has been published on GitHub yet. The upstream Windows beta linked below is an older, separate release, not this fork's current build. The following sections are inherited from the upstream macOS project and describe its Mac edition unless explicitly marked Windows.
+Download this fork's Windows builds from [GitHub Releases](https://github.com/zhao-hang-yu/SpektraLab-Windows/releases). The upstream Windows beta linked below is an older, separate release. The following sections are inherited from the upstream macOS project and describe its Mac edition unless explicitly marked Windows.
 
 ![SpektraLab: Lower Manhattan on Kodak Portra 160, printed on Kodak Vision 2383](screenshots/Screenshot_English.png)
 

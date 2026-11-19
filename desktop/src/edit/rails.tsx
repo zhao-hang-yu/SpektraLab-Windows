@@ -170,9 +170,9 @@ function FilterCapsule<T extends string>({ noun, value, filters, onChange, testI
  * family's tone (colour negative, slide, cine, black and white, paper), never
  * an empty box.
  */
-function StockCard({ stock, catalog, on, disabled, waits, title, label, onPick, cropped, kind, favourite, onFavourite }: {
+function StockCard({ stock, catalog, on, disabled, waits, title, label, cardTitle, virtualId, onPick, cropped, kind, favourite, onFavourite }: {
   stock: Stock | null; catalog: StockCatalog; on: boolean; disabled: boolean; waits?: boolean; title: string; label?: string;
-  onPick: () => void; cropped: boolean; kind: 'film' | 'paper'; favourite?: boolean; onFavourite?: () => void;
+  cardTitle?: string; virtualId?: string; onPick: () => void; cropped: boolean; kind: 'film' | 'paper'; favourite?: boolean; onFavourite?: () => void;
 }) {
   const cover = stock ? catalog.coverURL(stock.id) : null;
   const family = !stock ? 'none' : stock.monochrome ? 'bw' : stock.use === 'cine' ? 'cine' : stock.type === 'positive' ? 'positive' : kind === 'paper' ? 'paper' : 'negative';
@@ -182,10 +182,10 @@ function StockCard({ stock, catalog, on, disabled, waits, title, label, onPick, 
   return (
     <div className="v2-card-slot" role="group">
       <button role="option" aria-selected={on} className={`v2-card ${kind}` + (on ? ' on' : '') + (waits ? ' waits' : '')} disabled={disabled} title={title}
-        aria-label={label ?? title} onClick={onPick} data-stock={stock?.id ?? 'none'}>
+        aria-label={label ?? title} onClick={onPick} data-stock={stock?.id ?? virtualId ?? 'none'}>
         <span className={`v2-card-face ${family}` + (cover ? ' cover' : '') + (cropped ? '' : ' whole')} style={cover ? { backgroundImage: `url("${cover}")` } : undefined} />
         {stock?.use === 'cine' && kind === 'film' && <span className="v2-cine">CINE</span>}
-        <span className="v2-card-name">{stock ? cardName(catalog, stock.id) : tz('No paper', '不印放')}</span>
+        <span className="v2-card-name">{stock ? cardName(catalog, stock.id) : cardTitle ?? tz('No paper', '不印放')}</span>
       </button>
       {onFavourite && <button type="button" className="v2-card-favourite" aria-pressed={favourite}
         title={favouriteLabel} aria-label={favouriteLabel} onClick={onFavourite} data-favourite-stock={stock?.id}>
@@ -199,6 +199,8 @@ function FilmPaper() {
   const catalog = useSession((s) => s.catalog);
   const p = useSession((s) => s.sidecar.params);
   const editable = useSession((s) => !!s.selection && !s.batchExporting);
+  const gate = useSession((s) => s.gate);
+  const noFilm = useSession((s) => s.sidecar.noFilm);
   const [filmFilter, setFilmFilter] = useState<FilmFilter>('all');
   const [paperFilter, setPaperFilter] = useState<PaperFilter>('all');
   const cropped = useUi((s) => s.cardsCropped);
@@ -235,7 +237,7 @@ function FilmPaper() {
   return (
     <V2Section id="filmPaper" title={tz('Film & Paper', '胶片与相纸')} onReset={resetFilmStock} resetEnabled={editable}
       extraMenuItems={[{ id: 'stocks-new-photo-defaults', label: tz('Use These Stocks for New Photos', '设为新照片默认'),
-        enabled: editable && !!catalog.stock(p.filmStock) && (!p.scanFilm || positive), run: saveDefaults }]}>
+        enabled: editable && !!catalog.stock(p.filmStock) && (!p.scanFilm || positive) && (!p.digitalIntermediate || positive), run: saveDefaults }]}>
       <div className="v2-filter-row">
         <FilterCapsule noun={tz('Film', '胶片')} value={filmFilter} filters={FILM_FILTERS} onChange={setFilmFilter} testId="film-filter" />
         <button className={'v2-square-btn' + (cropped ? ' on' : '')} aria-pressed={cropped} data-testid="cards-cropped"
@@ -256,16 +258,23 @@ function FilmPaper() {
         {papers.map((x) => {
           const waits = positive || !catalog.canPrint(p.filmStock, x.id);
           return (
-            <StockCard key={x.id} kind="paper" stock={x} catalog={catalog} on={!positive && !p.scanFilm && x.id === p.printStock} disabled={!editable || waits} waits={waits}
+            <StockCard key={x.id} kind="paper" stock={x} catalog={catalog} on={!positive && !p.scanFilm && !(gate.digitalIntermediate && p.digitalIntermediate) && x.id === p.printStock} disabled={!editable || waits} waits={waits}
               title={waits ? (positive ? tz('A slide is scanned, never printed.', '反转片直接扫描，不印放。') : tz('Silver on silver, colour on colour.', '黑白配黑白，彩色配彩色。')) : x.name}
               label={waits ? `${x.name}, ${tz('not for this film', '不适用于此胶片')}` : x.name} cropped={cropped} onPick={() => selectPrintStock(x.id)}
               favourite={isFavourite(x.id)} onFavourite={() => toggleFavourite(x, paperGrid.current)} />
           );
         })}
-        {paperFilter === 'all' && (
+        {paperFilter === 'all' && <>
+          <StockCard kind="paper" stock={null} catalog={catalog} virtualId="digital-intermediate" cardTitle={tz('Digital Intermediate', '数字中间片')}
+            on={!positive && !p.scanFilm && gate.digitalIntermediate && p.digitalIntermediate}
+            disabled={!editable || noFilm || positive || !gate.digitalIntermediate} waits={positive || !gate.digitalIntermediate}
+            title={!gate.digitalIntermediate ? tz('This engine does not support Digital Intermediate.', '当前引擎不支持数字中间片。')
+              : positive ? tz('A slide is scanned directly.', '反转片直接扫描。')
+                : noFilm ? tz('Enable film simulation first.', '请先启用胶片模拟。') : tz('Digital Intermediate', '数字中间片')}
+            cropped={cropped} onPick={() => setParams((q) => ({ ...q, scanFilm: false, digitalIntermediate: true }))} />
           <StockCard kind="paper" stock={null} catalog={catalog} on={positive || p.scanFilm} disabled={!editable || positive} title={tz('No paper', '不印放')} cropped={cropped}
             onPick={() => setParams((q) => ({ ...q, scanFilm: true, digitalIntermediate: false }))} />
-        )}
+        </>}
       </div>
       <FilmExposure />
     </V2Section>
