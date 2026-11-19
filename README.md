@@ -1,10 +1,12 @@
-# SpektraLab
+# SpektraLab for Windows
 
-**English** · [简体中文](README.zh-CN.md) · [spektralab.app](https://spektralab.app)
+**English** · [简体中文](README.zh-CN.md)
 
-A film and print simulator for macOS. Open a RAW, pick a film and a paper,
-and get a physically modelled print — grain, halation, couplers, the enlarger's
-filter pack — in about a second.
+This repository is a Windows-focused fork of [JamesQiu2005/SpektraLab](https://github.com/JamesQiu2005/SpektraLab). It develops and improves the Windows edition, including RAW development, spectral film and paper simulation, grain, halation, film borders and SDR export.
+
+The Windows V2 build is an **alpha**. It uses the C++ engine with Vulkan and LibRaw. Some features and output still differ from the current macOS edition; the 6×6 film-edge preview rendered in local testing, but the subsequent format-switch and export workflow has not yet been fully verified. See [the Windows installer notes](desktop/docs/WINDOWS-INSTALLER.md) and [Windows release process](desktop/docs/WINDOWS-RELEASES.md).
+
+No installer for this fork has been published on GitHub yet. The upstream Windows beta linked below is an older, separate release, not this fork's current build. The following sections are inherited from the upstream macOS project and describe its Mac edition unless explicitly marked Windows.
 
 ![SpektraLab: Lower Manhattan on Kodak Portra 160, printed on Kodak Vision 2383](screenshots/Screenshot_English.png)
 
