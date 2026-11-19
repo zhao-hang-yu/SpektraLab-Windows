@@ -906,6 +906,82 @@
   ]
  },
  {
+  "name": "overscan_perforation",
+  "path": "film_render.overscan.perforation",
+  "type": "str",
+  "layer": "shoot",
+  "live": false
+ },
+ {
+  "name": "date_imprint_data_placement",
+  "path": "film_render.date_imprint.data_placement",
+  "type": "str",
+  "layer": "shoot",
+  "live": false
+ },
+ {
+  "name": "leak_kind",
+  "path": "film_render.leak.kind",
+  "type": "str",
+  "layer": "shoot",
+  "live": false
+ },
+ {
+  "name": "leak_amount",
+  "path": "film_render.leak.amount",
+  "type": "float",
+  "layer": "shoot",
+  "live": false,
+  "range": [
+   0.0,
+   4.0
+  ]
+ },
+ {
+  "name": "leak_rate",
+  "path": "film_render.leak.rate",
+  "type": "float",
+  "layer": "shoot",
+  "live": false,
+  "range": [
+   0.0,
+   1.0
+  ]
+ },
+ {
+  "name": "leak_front",
+  "path": "film_render.leak.front",
+  "type": "float",
+  "layer": "shoot",
+  "live": false,
+  "range": [
+   -1.0,
+   1.0
+  ]
+ },
+ {
+  "name": "leak_seed",
+  "path": "film_render.leak.seed",
+  "type": "int",
+  "layer": "shoot",
+  "live": false,
+  "range": [
+   0.0,
+   2147483647.0
+  ]
+ },
+ {
+  "name": "leak_edge",
+  "path": "film_render.leak.edge",
+  "type": "float",
+  "layer": "shoot",
+  "live": false,
+  "range": [
+   0.0,
+   4.0
+  ]
+ },
+ {
   "name": "preview_long_edge",
   "path": "io.preview_long_edge",
   "type": "int",

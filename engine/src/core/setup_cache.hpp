@@ -35,6 +35,7 @@
 #include "cam16.hpp"
 #include "colour.hpp"
 #include "hanatos.hpp"
+#include "minilab.hpp"
 #include "params.hpp"
 #include "profile.hpp"
 
@@ -42,6 +43,8 @@ namespace spk {
 
 class SetupCache {
 public:
+    MinilabCatalog& minilab() { return minilab_; }
+    const MinilabCatalog& minilab() const { return minilab_; }
     // The CAM16-UCS setup for one output colourspace, table included. Depends
     // on the colourspace and nothing else -- the knee and the lightness
     // compression are per-render constants the kernel reads separately.
@@ -71,6 +74,7 @@ private:
         size_t side = 0;
     };
 
+    MinilabCatalog minilab_;
     mutable std::mutex lock_;
     std::unordered_map<std::string, Cam16Setup> cam16_;
     std::vector<LutEntry> luts_;      // most recently used first

@@ -32,7 +32,14 @@ enum : uint {
     P_CARRIER = 199,
     P_LEAKS = 200,          // up to 12 x (s, side, amp, sigma_s, sigma_t)
     P_PAIR_ADV = 260,       // > 0: the same gate exposed again this far along (a half-frame pair)
-    P_COUNT = 261
+    P_LEAK_KIND = 261, P_LEAK_AMP, P_LEAK_SC, P_LEAK_ST, P_LEAK_EDGE, P_LEAK_SIG_A, P_LEAK_SIG_B,
+    P_LEAK_DIR, P_LEAK_TILT, P_LEAK_FRONT, P_LEAK_LAMBDA, P_LEAK_LEN, P_LEAK_CORE,
+    P_LEAK_REAR_R = 274, P_LEAK_REAR_G, P_LEAK_REAR_B, P_LEAK_FRONT_R, P_LEAK_FRONT_G, P_LEAK_FRONT_B,
+    P_EDGE_S = 284, P_EDGE_L = 286, P_EDGE_U = 288, P_EDGE_K = 290, P_EDGE_PH = 292,
+    P_EDGE_JIT = 296, P_EDGE_CORE, P_EDGE_P0, P_EDGE_P1, P_EDGE_PA, P_EDGE_SHIFT, P_EDGE_TAIL, P_EDGE_TLEN,
+    P_PERF_DT = 283, P_PERF_SHAPE = 304, P_PERF_ROWS, P_PERF_RMIN, P_PERF_RMAX, P_PERF_JIT, P_NB_PREV, P_NB_NEXT,
+    P_EDGE_AMP = 311, P_EDGE_FRONT,
+    P_COUNT = 313
 };
 constant uint kQStride = 10u;
 
@@ -140,6 +147,122 @@ static float3 sample_frame(device const float* f, float fx, float fy, uint fw, u
     return mix(mix(a, b, ax), mix(c, d, ax), ay);
 }
 
+// API-SPEC §21.9 (2026-11-15): the edge burn at film position `st` (mm). Each
+// long edge: rear light falling by e in its e-length inward, that e-length and
+// the strength undulating slowly along the film (two waves and a faint third,
+// the camera's phases), a front core a third as deep at the very edge, and on a
+// perforated film the hole rows lit as well (the light the holes' walls let in).
+static float3 leak_edge(float2 st, device const float* P, float3 rear, float3 front, float amp, float f) {
+    const float W = P[P_FILM_W];
+    // only on the film: past its edges (an open carrier's canvas) there is none to burn
+    if (st.y < 0.0f || st.y > W) return float3(0.0f);
+    const float s = st.x + P[P_EDGE_SHIFT];
+    float3 e = float3(0.0f);
+    for (uint k = 0u; k < 2u; ++k) {
+        const float d = max(k == 0u ? st.y : W - st.y, 0.0f);
+        const float p1 = P[P_EDGE_PH + 2u * k], p2 = P[P_EDGE_PH + 2u * k + 1u];
+        const float k1 = P[P_EDGE_K], k2 = P[P_EDGE_K + 1u];
+        const float w = 0.55f * sin(k1 * s + p1) + 0.33f * sin(k2 * s + p2) + 0.12f * sin(2.9f * k2 * s + p1 + p2);
+        const float w2 = 0.6f * sin(k1 * s + p2 + 2.1f) + 0.4f * sin(k2 * s + p1 + 0.7f);
+        // (exp: the undulation's deep places are tongues, its shallow ones shoulders, as on the sample)
+        const float len = max(P[P_EDGE_L + k] * exp(P[P_EDGE_U + k] * w), 1e-3f);
+        const float str = P[P_EDGE_S + k] * exp2(P[P_EDGE_JIT] * (0.6f * w + 0.4f * w2));
+        // the hot burn, and the paper's (or the felt's) scatter beyond it: a weaker, longer tail
+        const float tlen = len * max(P[P_EDGE_TLEN], 1.0f);
+        float p = exp(-d / len) + P[P_EDGE_TAIL] * exp(-d / tlen);
+        // (a gauge with one row of holes, API-SPEC §24: that edge only)
+        const float rows = P[P_PERF_ROWS];
+        const bool row_here = rows < 0.5f || (rows < 1.5f ? k == 0u : k == 1u);
+        if (P[P_EDGE_PA] > 0.0f && row_here) {
+            const float dh = max(max(P[P_EDGE_P0] - d, d - P[P_EDGE_P1]), 0.0f);
+            p += P[P_EDGE_PA] * exp(-dh / tlen);
+        }
+        const float core = exp(-d / (len * max(P[P_EDGE_CORE], 1e-3f)));
+        e += str * ((1.0f - f) * p * rear + f * core * front);
+    }
+    return amp * e;
+}
+
+// API-SPEC §21.1: the leak's kind at film position `st` (mm): a profile along
+// the film (a lopsided band, a wash from one end, or a round spot) times a
+// decay across it from the bright long edge, lit by the rear light (through
+// the base: red first) and, on the band's core, the front light (to white).
+static float3 leak_kind_field(float2 st, device const float* P, float kind, float3 rear, float3 front) {
+    const float W = P[P_FILM_W], amp = P[P_LEAK_AMP], f = P[P_LEAK_FRONT];
+    const float d_edge = max(P[P_LEAK_EDGE] < 0.5f ? st.y : W - st.y, 0.0f);
+    const float across = exp(-d_edge / max(P[P_LEAK_LAMBDA], 1e-3f));
+    float p, core;
+    if (kind < 1.5f) {
+        // band: tilted a few degrees off square; soft on one flank, sharp on the other
+        const float d = st.x - P[P_LEAK_SC] + P[P_LEAK_TILT] * (st.y - 0.5f * W);
+        const float sig = d * P[P_LEAK_DIR] > 0.0f ? P[P_LEAK_SIG_A] : P[P_LEAK_SIG_B];
+        p = exp(-0.5f * d * d / max(sig * sig, 1e-6f));
+        const float c = P[P_LEAK_CORE];
+        core = exp(-0.5f * d * d / max(c * c, 1e-6f));
+    } else if (kind < 2.5f) {
+        // wash: from the leaking end into the frame, rising a little past the end
+        const float x = (st.x - P[P_LEAK_SC]) * P[P_LEAK_DIR] + P[P_LEAK_TILT] * (st.y - 0.5f * W);
+        const float len = max(P[P_LEAK_LEN], 1e-3f);
+        p = exp(-max(x, -0.5f * len) / len);
+        core = p;
+    } else {
+        // spot: the 120 window, or off 120 a pinhole (API-SPEC §21.8), no long edge to come from. The window's image (oval, its edge
+        // irregular: three harmonics of the angle, their phases the camera's), hot and flat
+        // inside, and the backing paper's scatter around it, falling by e in SIG_A mm.
+        const float2 dd = st - float2(P[P_LEAK_SC], P[P_LEAK_ST]);
+        const float ca = cos(P[P_LEAK_TILT]), sa = sin(P[P_LEAK_TILT]);
+        const float2 q = float2(ca * dd.x + sa * dd.y, (ca * dd.y - sa * dd.x) / max(P[P_LEAK_SIG_B], 0.1f));
+        // (at the centre itself the angle is no number at all: atan2(0, 0) is the GPU's to define -- 0 or
+        // +-pi on an M3 Max, measured 2026-11-12, never NaN there; a NaN would carry
+        // through r into u. At rho = 0 the result does not depend on the angle (u = 0 for any finite r),
+        // so it is set, not asked for, and no pixel changes; 2026-11-15)
+        const float rho = length(q), th = rho > 0.0f ? atan2(q.y, q.x) : 0.0f, ph = 6.2831853f * P[P_LEAK_DIR];
+        const float edge = 0.55f * cos(2.0f * th + ph) + 0.30f * cos(3.0f * th + 2.7f * ph + 1.3f)
+                         + 0.15f * cos(5.0f * th + 4.1f * ph + 2.1f);
+        const float r = max(P[P_LEAK_LEN], 1e-3f) * (1.0f + P[P_LEAK_CORE] * edge);
+        const float u = rho / r;
+        const float window = exp(-u * u * u * u);
+        const float scatter = exp(-max(rho - r, 0.0f) / max(P[P_LEAK_SIG_A], 1e-3f));
+        p = 8.0f * window + 0.125f * scatter;
+        return amp * ((1.0f - f) * p * rear + f * p * front);
+    }
+    return amp * across * ((1.0f - f) * p * rear + f * core * front);
+}
+
+// API-SPEC §21.1, §21.9: a light leak's raw exposure at film position `st` (mm), the
+// one function the film canvas and the bare frame (`spk_leak_frame`) share. It is
+// light on the film, not through the lens: the leak's kind (band, wash, spot), and
+// beside it the edge burn (2026-11-16; until then a kind of its own), the two
+// added as exposure. With the edge burn alone the kind's part is 0, so the sum is
+// the burn's to the bit.
+static float3 leak_field(float2 st, device const float* P) {
+    const float kind = P[P_LEAK_KIND];
+    const float3 rear = float3(P[P_LEAK_REAR_R], P[P_LEAK_REAR_G], P[P_LEAK_REAR_B]);
+    const float3 front = float3(P[P_LEAK_FRONT_R], P[P_LEAK_FRONT_G], P[P_LEAK_FRONT_B]);
+    float3 e = float3(0.0f);
+    if (kind > 0.5f) e = leak_kind_field(st, P, kind, rear, front);
+    if (P[P_EDGE_AMP] > 0.0f) e += leak_edge(st, P, rear, front, P[P_EDGE_AMP], P[P_EDGE_FRONT]);
+    return e;
+}
+
+kernel void spk_leak_frame(device const float* frame [[buffer(0)]],
+                           device const float* P [[buffer(1)]],
+                           device const uint* n [[buffer(2)]],
+                           device float* out [[buffer(3)]],
+                           uint3 tid [[thread_position_in_grid]]) {
+    const uint i = tid.x;
+    if (i >= n[0]) return;
+    const uint cw = uint(P[P_CW]);
+    const float x = float(i % cw), y = float(i / cw), px = P[P_PX];
+    float2 st;
+    if (P[P_VERTICAL] < 0.5f) st = float2(P[P_GS0] + (x + 0.5f) * px, P[P_GT0] + (y + 0.5f) * px);
+    else                      st = float2(P[P_GS0] + (y + 0.5f) * px, P[P_GT0] + P[P_GH] - (x + 0.5f) * px);
+    const float3 e = float3(frame[3u * i], frame[3u * i + 1u], frame[3u * i + 2u]) + leak_field(st, P);
+    out[3u * i] = e.x;
+    out[3u * i + 1u] = e.y;
+    out[3u * i + 2u] = e.z;
+}
+
 // ① + ② + the fog of ③: raw exposure on the film canvas.
 kernel void spk_overscan_canvas(device const float* frame [[buffer(0)]],
                                 device const float* P [[buffer(1)]],
@@ -157,12 +280,23 @@ kernel void spk_overscan_canvas(device const float* frame [[buffer(0)]],
         float2 sg = st;
         float shift = 0.0f;
         if (P[P_PAIR_ADV] > 0.0f && st.x > P[P_GS0] + 0.5f * (P[P_GW] + P[P_PAIR_ADV])) { shift = P[P_PAIR_ADV]; sg.x -= shift; }
+        // API-SPEC §24: a cine film's neighbours, the same picture exposed one advance before and after,
+        // past half an advance from the gate's centre.
+        if (P[P_NB_NEXT] > 0.0f) {
+            const float mid = P[P_GS0] + 0.5f * P[P_GW];
+            if (st.x > mid + 0.5f * P[P_NB_NEXT])      { shift = P[P_NB_NEXT]; sg.x -= shift; }
+            else if (st.x < mid - 0.5f * P[P_NB_PREV]) { shift = -P[P_NB_PREV]; sg.x -= shift; }
+        }
         const float cov = penumbra(gate_sdf(sg, P), P[P_PENUMBRA]);
+        // Where the frame is sampled: a pair's input holds both pictures, so at the film position itself;
+        // a cine neighbour is the same picture again, so at its place in its own gate.
+        const bool nb = P[P_NB_NEXT] > 0.0f;
+        const float s_at = nb ? sg.x : st.x;
         if (cov > 0.0f) {
             const float px = P[P_PX];
             float fx, fy;
-            if (P[P_VERTICAL] < 0.5f) { fx = (st.x - P[P_GS0]) / px - 0.5f; fy = (st.y - P[P_GT0]) / px - 0.5f; }
-            else                      { fx = (P[P_GT0] + P[P_GH] - st.y) / px - 0.5f; fy = (st.x - P[P_GS0]) / px - 0.5f; }
+            if (P[P_VERTICAL] < 0.5f) { fx = (s_at - P[P_GS0]) / px - 0.5f; fy = (st.y - P[P_GT0]) / px - 0.5f; }
+            else                      { fx = (P[P_GT0] + P[P_GH] - st.y) / px - 0.5f; fy = (s_at - P[P_GS0]) / px - 0.5f; }
             e += cov * sample_frame(frame, fx, fy, uint(P[P_FW]), uint(P[P_FH]));
         }
         // Gate flare: the gate's bevelled edge reflects scene light onto the
@@ -171,7 +305,7 @@ kernel void spk_overscan_canvas(device const float* frame [[buffer(0)]],
         const float d_gate = gate_sdf(sg, P);
         if (P[P_FLARE_AMP] > 0.0f && d_gate > -0.02f && d_gate < 6.0f * P[P_FLARE_WIDTH]) {
             const float px = P[P_PX];
-            const float in_s = clamp(sg.x, P[P_GS0] + 0.12f, P[P_GS0] + P[P_GW] - 0.12f) + shift;
+            const float in_s = clamp(sg.x, P[P_GS0] + 0.12f, P[P_GS0] + P[P_GW] - 0.12f) + (nb ? 0.0f : shift);
             const float in_t = clamp(st.y, P[P_GT0] + 0.12f, P[P_GT0] + P[P_GH] - 0.12f);
             float fx, fy;
             if (P[P_VERTICAL] < 0.5f) { fx = (in_s - P[P_GS0]) / px - 0.5f; fy = (in_t - P[P_GT0]) / px - 0.5f; }
@@ -197,6 +331,7 @@ kernel void spk_overscan_canvas(device const float* frame [[buffer(0)]],
             fog += P[b + 2u] * exp(-ds * ds / (2.0f * P[b + 3u] * P[b + 3u])) * exp(-dd / P[b + 4u]);
         }
         e += fog * float3(P[P_FOG_R], P[P_FOG_G], P[P_FOG_B]);
+        if (P[P_LEAK_KIND] > 0.5f || P[P_EDGE_AMP] > 0.0f) e += leak_field(st, P);
     }
     out[3u * i] = e.x;
     out[3u * i + 1u] = e.y;
@@ -237,17 +372,35 @@ static float perf_sdf(float2 st, device const float* P, thread uint& hole) {
     // cut where the other three sides were soft.)
     const float k = floor((st.x - ph - 0.5f * P[P_PERF_W]) / pitch + 0.5f);
     const bool top = st.y < 0.5f * W;
+    // API-SPEC §24: one row only -- the t-low edge (Super 8) or the t-high edge (16 mm): no hole on the other
+    if ((P[P_PERF_ROWS] > 0.5f && P[P_PERF_ROWS] < 1.5f && !top) || (P[P_PERF_ROWS] > 1.5f && top)) {
+        hole = 0u;
+        return 1.0e3f;
+    }
     const uint seed = uint(P[P_PERF_SEED]);
+    // the punch's tolerances and the corner clamp: KS's (x 1, 0.3-0.6 mm) unless the film says otherwise
+    const float jit = P[P_PERF_JIT] > 0.0f ? P[P_PERF_JIT] : 1.0f;
+    const float rmin = P[P_PERF_RMIN] > 0.0f ? P[P_PERF_RMIN] : 0.3f, rmax = P[P_PERF_RMAX] > 0.0f ? P[P_PERF_RMAX] : 0.6f;
     hole = hash_u(uint(int(k) * 2 + (top ? 0 : 1)) * 0x9E3779B9u ^ seed);
     const float j0 = hash_f(int(hole & 0xFFFFu), seed ^ 0x1u) - 0.5f, j1 = hash_f(int(hole & 0xFFFFu), seed ^ 0x2u) - 0.5f;
     const float j2 = hash_f(int(hole & 0xFFFFu), seed ^ 0x3u) - 0.5f, j3 = hash_f(int(hole & 0xFFFFu), seed ^ 0x4u) - 0.5f;
     const float j4 = hash_f(int(hole & 0xFFFFu), seed ^ 0x5u) - 0.5f;
-    const float wa = P[P_PERF_W] + 0.016f * j2, hc = P[P_PERF_H] + 0.016f * j3;
-    const float r = clamp(P[P_PERF_R] + 0.08f * j4, 0.3f, 0.6f);
-    const float sc = ph + k * pitch + 0.5f * P[P_PERF_W] + 0.020f * j0;
-    const float tc = (top ? P[P_PERF_EDGE] + 0.5f * P[P_PERF_H] : W - P[P_PERF_EDGE] - 0.5f * P[P_PERF_H]) + 0.024f * j1;
-    const float2 q = fabs(float2(st.x - sc, st.y - tc)) - float2(0.5f * wa - r, 0.5f * hc - r);
-    float d = length(max(q, 0.0f)) + min(max(q.x, q.y), 0.0f) - r;
+    const float wa = P[P_PERF_W] + 0.016f * jit * j2, hc = P[P_PERF_H] + 0.016f * jit * j3;
+    const float r = clamp(P[P_PERF_R] + 0.08f * jit * j4, rmin, rmax);
+    const float sc = ph + k * pitch + 0.5f * P[P_PERF_W] + 0.020f * jit * j0;
+    // (+ P_PERF_DT: ks65's slitter shifts both rows across; 0, exactly, elsewhere)
+    const float tc = (top ? P[P_PERF_EDGE] + 0.5f * P[P_PERF_H] : W - P[P_PERF_EDGE] - 0.5f * P[P_PERF_H]) + 0.024f * jit * j1 +
+                     P[P_PERF_DT];
+    float d;
+    if (P[P_PERF_SHAPE] > 0.5f) {
+        // Bell & Howell (API-SPEC §24): a disc of the hole's width across, cut flat along to its
+        // height, its corners eased by r (the shape eroded by r, then grown back)
+        const float2 pd = float2(st.x - sc, st.y - tc);
+        d = max(length(pd) - (0.5f * hc - r), fabs(pd.x) - (0.5f * wa - r)) - r;
+    } else {
+        const float2 q = fabs(float2(st.x - sc, st.y - tc)) - float2(0.5f * wa - r, 0.5f * hc - r);
+        d = length(max(q, 0.0f)) + min(max(q.x, q.y), 0.0f) - r;
+    }
     // the punched edge: each hole's own roughness, 1-4 microns
     const float rough = 0.001f + 0.003f * hash_f(int(hole & 0xFFFFu), seed ^ 0x6u);
     d += rough * (value_noise(st.x / 0.05f, seed ^ 0x77u) + value_noise(st.y / 0.05f, seed ^ 0x99u) - 1.0f) * 2.0f;

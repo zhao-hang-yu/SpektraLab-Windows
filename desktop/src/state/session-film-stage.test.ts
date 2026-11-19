@@ -161,7 +161,7 @@ describe('black-and-white settings through the editor and persistence doors', ()
     session.selectFilmStock('kodak_portra_400');
     expect(session.sessionStore.getState().sidecar.params).toMatchObject({ printStock: 'kodak_portra_endura', scanFilm: false });
     await vi.advanceTimersByTimeAsync(1000);
-    expect(fake.setParams).toHaveBeenCalledWith('s1', expect.objectContaining({ grain_sublayers_active: true, grain_amount: 1 }));
+    expect(fake.setParams).toHaveBeenCalledWith('s1', expect.objectContaining({ grain_sublayers_active: true, grain_amount: 1.06 }));
     session.undo();
     expect(session.sessionStore.getState().sidecar.params).toEqual(silver.params);
     session.redo();

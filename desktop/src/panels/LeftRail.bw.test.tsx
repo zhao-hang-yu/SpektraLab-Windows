@@ -99,7 +99,7 @@ describe('black-and-white picker behavior', () => {
     await click(div.querySelector('[data-testid=film-edge-enable]')!);
     await click(div.querySelector('[data-testid=date-back-enable]')!);
     expect(fake.setParams).not.toHaveBeenCalled();
-    await act(async () => { sessionStore.setState({ gate: featureGate([]) }); });
+    await act(async () => { sessionStore.setState({ gate: featureGate([]), selection: '/test/a.ARW' }); });
     await click(div.querySelector('[data-testid=film-edge-enable]')!);
     expect(fake.setParams).toHaveBeenCalledTimes(1);
     expect(fake.setParams.mock.calls[0]![0](newSidecar().params).filmEdge.active).toBe(true);

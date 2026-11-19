@@ -11,7 +11,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { menuBar, type MenuEntry } from './commands';
 import { Glyph as G } from '../theme/Glyph';
 import { openMenu, setUi, useUi } from './ui';
-import { closeWindow, minimize, toggleMaximize } from './windowChrome';
+import { closeWindow, minimize, toggleMaximize, usesNativeCaption } from './windowChrome';
 import { useSession } from '../state/session';
 import { useLibrary } from '../library/store';
 import { useSettings } from '../state/settings';
@@ -59,6 +59,7 @@ export function TitleBar({ title }: { title: string }) {
   const open = useUi((s) => s.menu);
   const access = useUi((s) => s.accessKeys);
   const maximized = useUi((s) => s.maximized);
+  const nativeCaption = usesNativeCaption();
   // Re-read the menus when what they show changes.
   useSession((s) => s);
   useLibrary((s) => s);
@@ -73,9 +74,9 @@ export function TitleBar({ title }: { title: string }) {
   useLayoutEffect(() => {
     // The titles' own width against the room the bar has for them (README §9.2).
     const need = measure.current?.scrollWidth ?? 0;
-    const room = width - 46 * 3 - 40 - 160;
+    const room = width - (nativeCaption ? 0 : 46 * 3) - 40 - 160;
     setFolded(need > room);
-  }, [width, titles]);
+  }, [width, titles, nativeCaption]);
   useEffect(() => {
     if (!open) return;
     const close = (e: PointerEvent) => { if (!bar.current?.contains(e.target as Node)) openMenu(null); };
@@ -84,7 +85,7 @@ export function TitleBar({ title }: { title: string }) {
   }, [open]);
   const done = () => { openMenu(null); setUi({ accessKeys: false }); };
   return (
-    <header className="v2-titlebar" data-testid="titlebar" data-tauri-drag-region onDoubleClick={(e) => { if (e.target === e.currentTarget) void toggleMaximize(); }}>
+    <header className="v2-titlebar" data-testid="titlebar" data-tauri-drag-region={nativeCaption ? undefined : true} onDoubleClick={(e) => { if (!nativeCaption && e.target === e.currentTarget) void toggleMaximize(); }}>
       <div className="v2-app-icon" aria-hidden><span /></div>
       <div className="v2-menubar" ref={bar} role="menubar" aria-label={tz('Menu bar', '菜单栏')} data-testid="menubar" data-folded={folded || undefined}>
         {folded ? (
@@ -104,8 +105,8 @@ export function TitleBar({ title }: { title: string }) {
         ))}
       </div>
       <div className="v2-menubar-measure" ref={measure} aria-hidden>{menus.map((m) => <span key={m.id}>{m.label}</span>)}</div>
-      <div className="v2-window-title" data-tauri-drag-region data-testid="window-title">{title}</div>
-      <div className="v2-captions">
+      <div className="v2-window-title" data-tauri-drag-region={nativeCaption ? undefined : true} data-testid="window-title">{title}</div>
+      {!nativeCaption && <div className="v2-captions">
         <button className="v2-caption" aria-label={tz('Minimize', '最小化')} data-testid="caption-min" onClick={() => void minimize()}><svg width="10" height="10"><path d="M0 5.5h10" stroke="currentColor" /></svg></button>
         <button className="v2-caption" aria-label={maximized ? tz('Restore', '还原') : tz('Maximize', '最大化')} data-testid="caption-max" onClick={() => void toggleMaximize()}>
           {maximized
@@ -113,7 +114,7 @@ export function TitleBar({ title }: { title: string }) {
             : <svg width="10" height="10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" /></svg>}
         </button>
         <button className="v2-caption close" aria-label={tz('Close', '关闭')} data-testid="caption-close" onClick={() => void closeWindow()}><svg width="10" height="10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" /></svg></button>
-      </div>
+      </div>}
     </header>
   );
 }

@@ -54,6 +54,7 @@ export interface Settings extends NewPhotoDefaults {
   rightWidth: number;
   filmEdgeBodySeed: number;
   collapsedSections: Record<string, boolean>;
+  favouriteStocks: string[];
   /** v2: the Library grid's tile size in epx (the toolbar's slider, PC-L1: 147 by default, six to a row). */
   libraryTile: number;
   lastFolder: string | null;
@@ -91,6 +92,7 @@ export const SETTINGS_DEFAULT: Settings = {
   rightWidth: 288,
   filmEdgeBodySeed: 0,
   collapsedSections: {},
+  favouriteStocks: [],
   libraryTile: 147,
   lastFolder: null,
   folderRawOnly: false,
@@ -128,6 +130,8 @@ export function loadSettings(storage: Pick<Storage, 'getItem'> | null): Settings
     s.browserWidth = boundedBrowser(s.browserWidth);
     if (!['general', 'recipes', 'library', 'rendering', 'engine', 'diagnostics'].includes(s.settingsPane)) s.settingsPane = 'general';
     s.copyGroups = (Array.isArray(s.copyGroups) ? s.copyGroups : []).filter((g): g is string => typeof g === 'string');
+    s.favouriteStocks = [...new Set((Array.isArray(s.favouriteStocks) ? s.favouriteStocks : [])
+      .filter((id): id is string => typeof id === 'string' && id.length > 0))];
     if (!Number.isInteger(s.filmEdgeBodySeed) || s.filmEdgeBodySeed < 0 || s.filmEdgeBodySeed > 2147483647) s.filmEdgeBodySeed = 0;
     if (!['general', 'rendering', 'memory', 'diagnostics', 'agents'].includes(s.settingsPage)) s.settingsPage = 'general';
     s.recentFolders = (Array.isArray(s.recentFolders) ? s.recentFolders : [])

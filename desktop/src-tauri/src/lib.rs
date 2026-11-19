@@ -447,10 +447,24 @@ pub fn run() {
         }))
     };
 
+    let context = tauri::generate_context!();
+    let window_state = tauri_plugin_window_state::Builder::default();
+    #[cfg(windows)]
+    let (context, window_state) = {
+        use tauri_plugin_window_state::StateFlags;
+
+        let mut context = context;
+        if let Some(window) = context.config_mut().app.windows.iter_mut().find(|window| window.label == "main") {
+            window.decorations = true;
+        }
+        // Older builds saved the main window with decorations disabled.
+        (context, window_state.with_state_flags(StateFlags::all() - StateFlags::DECORATIONS))
+    };
+
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(window_state.build())
         .setup(|app| {
             let handle = app.handle().clone();
             diagnostics::initialize(&handle)?;
@@ -505,6 +519,6 @@ pub fn run() {
             }
         })
         .invoke_handler(handlers!())
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running SpektraLab");
 }

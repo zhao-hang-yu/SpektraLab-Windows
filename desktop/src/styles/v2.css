@@ -140,10 +140,13 @@ html, body, #root { background: var(--v2-ground); }
 .v2-filter .v2-g { margin-left: 2px; color: var(--v2-secondary); }
 .v2-square-btn { margin-left: auto; width: 30px; height: 24px; border: 0; border-radius: 7px; background: var(--v2-card); color: var(--v2-secondary); display: grid; place-items: center; padding: 0; }
 .v2-square-btn.on { color: var(--v2-text); }
-.v2-cards { display: grid; grid-template-columns: repeat(3, var(--v2-card-w)); gap: 8px; height: 178px; overflow-y: auto; scrollbar-width: thin; padding: 3px; margin: -3px -3px 7px; align-content: start;
-  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent); }
+.v2-cards { display: grid; grid-template-columns: repeat(3, minmax(0, var(--v2-card-w))); gap: 8px; max-height: 178px; overflow-y: auto; scrollbar-width: thin; padding: 3px; margin: -3px -3px 7px; align-content: start; }
 .v2-cards-empty { grid-column: 1 / -1; font-size: var(--v2-fs-caption); padding: 8px 0; }
-.v2-card { position: relative; width: var(--v2-card-w); height: var(--v2-card-h); border: 0; background: var(--v2-card); border-radius: 10px; padding: 0; overflow: hidden; text-align: left; flex: none; }
+.v2-card-slot { position: relative; min-width: 0; }
+.v2-card { position: relative; display: block; width: 100%; height: var(--v2-card-h); border: 0; background: var(--v2-card); border-radius: 10px; padding: 0; overflow: hidden; text-align: left; }
+.v2-card-favourite { position: absolute; z-index: 2; top: 4px; left: 4px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 6px; background: rgba(0, 0, 0, 0.60); color: var(--v2-text); }
+.v2-card-favourite:hover, .v2-card-favourite:focus-visible { background: var(--v2-ground); }
+.v2-card-favourite[aria-pressed='true'] { color: var(--v2-accent); }
 .v2-card-face { position: absolute; inset: 0; background: var(--v2-plot) center/cover no-repeat; }
 .v2-card-face.whole { background-size: contain; background-color: var(--v2-plot); }
 /* the swatch, where the stock has no picture yet: its family's tone */
@@ -159,7 +162,6 @@ html, body, #root { background: var(--v2-ground); }
 .v2-card.on { outline: 2px solid var(--v2-selection); outline-offset: 0.5px; }
 .v2-card.waits { opacity: 0.38; }
 .v2-cine { position: absolute; z-index: 1; top: 6px; right: 6px; height: 15px; line-height: 13px; color: var(--v2-accent); font-size: var(--v2-fs-caption); background: rgba(0, 0, 0, 0.5); border: 0.9px solid var(--v2-accent); border-radius: 7.5px; padding: 0 6px; }
-.v2-strip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 3px; margin: -3px -3px 9px; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 30px), transparent); }
 
 .v2-ruler-row { min-height: var(--v2-ruler-row); }
 .v2-row-line { display: flex; justify-content: space-between; align-items: center; height: 22px; }
@@ -173,7 +175,22 @@ html, body, #root { background: var(--v2-ground); }
 .v2-ruler-mark { position: absolute; left: 50%; top: 0; width: 2px; height: 16px; margin-left: -1px; background: var(--v2-accent); }
 
 /* Format's size cards: 68.5 × 62, the frame drawn to scale, the name and its size under it */
-.v2-size-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 2px 0 8px; }
+.film-edge-chooser { padding: 4px 0 8px; }
+.film-edge-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: var(--v2-fs-label); }
+.film-edge-heading span { color: var(--v2-dim); font-size: var(--v2-fs-caption); text-align: right; }
+.film-edge-filters { display: flex; gap: 4px; margin: 8px 0; }
+.film-edge-filters button { flex: 1; min-width: 0; padding: 5px 2px; border: 0; border-radius: 5px; background: var(--v2-card); color: var(--v2-secondary); font-size: var(--v2-fs-caption); }
+.film-edge-filters button[aria-pressed='true'] { background: var(--v2-selection); color: #111; }
+.film-edge-formats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.film-edge-format { min-width: 0; min-height: 76px; padding: 6px; border: 1px solid transparent; border-radius: 7px; background: var(--v2-card); color: var(--v2-text); text-align: left; display: flex; flex-direction: column; gap: 2px; }
+.film-edge-format.on { border-color: var(--v2-selection); }
+.film-edge-format:disabled { opacity: .38; }
+.film-edge-format b { font-size: var(--v2-fs-caption); overflow-wrap: anywhere; }
+.film-edge-format small { font-size: 10px; color: var(--v2-dim); }
+.film-edge-format-icon { height: 25px; width: 100%; display: flex; align-items: center; justify-content: center; }
+.film-edge-format-icon i { display: block; width: auto; height: auto; max-height: 23px; max-width: 42px; width: 42px; border: 2px solid var(--v2-secondary); border-radius: 2px; }
+.film-edge-hint { color: var(--v2-dim); font-size: var(--v2-fs-caption); line-height: 1.4; margin: 6px 0 8px; }
+.v2-size-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 2px 0 8px; }
 .v2-size { height: 62px; border: 0; border-radius: 9px; background: var(--v2-card); display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start; padding: 0 4px 3px 8px; position: relative; min-width: 0; text-align: left; }
 .v2-size-frame { position: absolute; left: 50%; top: 20px; transform: translate(-50%, -50%); background: #120D09; border: 0.8px solid var(--v2-dim); border-radius: 1px; }
 .v2-size b { font-weight: 600; font-size: var(--v2-fs-label); line-height: 15px; white-space: nowrap; }
@@ -496,11 +513,10 @@ html, body, #root { background: var(--v2-ground); }
 .v2-filmstrip .thumb-name { display: none; }
 .v2-picture .histogram { display: none; }
 
-/* Film & Paper (PC-E1: the film grid shows two rows and a part of the third and scrolls; the papers' strip under it) */
-.v2-cards { max-height: 196px; overflow-y: auto; scrollbar-width: none; padding-bottom: 2px; }
+/* Film & Paper */
 .v2-filter { height: 18px; line-height: 18px; margin: 2px 0 8px; }
 .v2-cards + .v2-filter { margin-top: 6px; }
-.v2-strip + .v2-ruler-row { margin-top: 6px; }
+.v2-paper-cards + .v2-ruler-row { margin-top: 6px; }
 .v2-tiles { padding-top: 4px; }
 
 /* ------------------------------------------------------------- one window (PRD-W5 §2) */

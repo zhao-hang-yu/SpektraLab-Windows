@@ -41,7 +41,7 @@ struct LensCorrectionInfo {
 struct Metadata {
     std::string make, model, lens, datetime_original;
     std::optional<double> iso, shutter_s, aperture, focal_mm;
-    std::optional<double> exposure_program, exposure_bias_ev, focal_35mm;
+    std::optional<double> exposure_program, exposure_bias_ev, focal_35mm, metering_mode;
     ExifValues extra_exif;
     std::optional<LensCorrectionInfo> lens_correction;
     int orientation = 1;   // EXIF 1..8, of the file as stored

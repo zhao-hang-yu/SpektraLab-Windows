@@ -351,6 +351,10 @@ struct spk_engine {
         backend.set("render_core", Json(std::string(kRenderCore)));
         backend.set("host", Json(std::string("native")));
         backend.set("math_mode", Json(math_mode));
+        backend.set("film_light_leak", Json(true));
+        backend.set("date_perforation_data", Json(true));
+        backend.set("overscan_ks65", Json(true));
+        backend.set("overscan_cine", Json(true));
 #if !defined(__APPLE__) || defined(SPK_VULKAN_BACKEND)
         // These upstream effects still require kernels or Apple services that
         // have not been ported. Defaults stay usable; explicit requests fail.
@@ -627,9 +631,31 @@ spk_engine* spk_engine_create(const char* resources_dir, void* device) {
         }
     }
 
+    const std::string colour_text = read_text_file(engine->resources_dir + "/neutral_print_filters_colour.json");
+    if (!colour_text.empty()) {
+        Json colour_filters;
+        std::string parse_error;
+        if (!Json::parse(colour_text, colour_filters, parse_error)) {
+            g_error = "neutral_print_filters_colour.json: " + parse_error;
+            return nullptr;
+        }
+        if (!engine->neutral_filters.is_object()) engine->neutral_filters = Json::object();
+        for (const auto& [paper, by_illuminant] : colour_filters.fields()) {
+            Json paper_rows = engine->neutral_filters.has(paper) ? engine->neutral_filters.at(paper) : Json::object();
+            for (const auto& [illuminant, rows] : by_illuminant.fields()) {
+                Json ill_rows = paper_rows.has(illuminant) ? paper_rows.at(illuminant) : Json::object();
+                for (const auto& [film, row] : rows.fields())
+                    if (!ill_rows.has(film)) ill_rows.set(film, row);
+                paper_rows.set(illuminant, std::move(ill_rows));
+            }
+            engine->neutral_filters.set(paper, std::move(paper_rows));
+        }
+    }
+
     if (!engine->print_luts.init(engine->resources_dir, error)) { g_error = error; return nullptr; }
 
 #if !defined(__APPLE__) || defined(SPK_VULKAN_BACKEND)
+    if (!engine->setup_cache.minilab().init(engine->resources_dir, error)) { g_error = error; return nullptr; }
     if (device) { g_error = "Windows device-buffer input is not implemented yet; pass null"; return nullptr; }
     engine->gpu = gpu::Gpu::create_vulkan(engine->resources_dir + "/vulkan", error);
 #else
@@ -2578,6 +2604,7 @@ Params medium_probe_params(const Params& session) {
     // The ramp is the medium, not a frame of film: no rebate, no date.
     p.film_render.overscan.active = false;
     p.film_render.date_imprint.active = false;
+    p.film_render.leak = LeakParams{};
     p.print_render.glare.active = false;
     p.print_render.contrast_mask.active = false;
     p.print_render.edr_enabled = false;

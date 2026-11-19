@@ -11,7 +11,7 @@
 #include <vector>
 namespace {
 void check(bool ok,const std::string& error){if(!ok)throw std::runtime_error(error);}
-using P=std::array<float,261>;
+using P=std::array<float,313>;
 std::vector<float> run(spk::gpu::Gpu* gpu,const char* kernel,const std::vector<float>& in,const std::vector<float>& p,
                        std::vector<float> initial,uint32_t count){
     std::string e;initial.insert(initial.end(),51,-12345.f);
@@ -54,5 +54,24 @@ int main(int argc,char** argv){try{
     for(int y=0;y<7;++y)for(int x=0;x<5;++x){const int xx=x-2,yy=y+9;if(xx<0||yy<0||xx>=w||yy>=h)continue;
         const float a=mask[y*5+x];if(a<=0)continue;for(int c=0;c<3;++c)want[(yy*w+xx)*3+c]+=a*m[6+c];}
     for(size_t i=0;i<want.size();++i)check(std::abs(added[i]-want[i])<2e-7f,"mask exposure/offset clipping differs from CPU reference");
-    std::puts("Overscan kernels passed identity exposure, density/scan coverage, mask clipping and dispatch guards");return 0;
+    P leak{};
+    leak[0]=w; leak[2]=.1f; leak[44]=h*leak[2];
+    check(run(gpu.get(),"spk_leak_frame",input,leak)==input,"disabled leak changed the frame");
+    leak[274]=1; leak[275]=.08f; leak[276]=.003f;
+    leak[284]=1.2f; leak[285]=.65f; leak[286]=.15f; leak[287]=.11f;
+    leak[303]=1; leak[311]=.7f;
+    const auto burn=run(gpu.get(),"spk_leak_frame",input,leak);
+    for(int y=0;y<h;++y) {
+        const double t=(y+.5)*double(leak[2]);
+        const double field=leak[311]*(leak[284]*std::exp(-t/leak[286])+leak[285]*std::exp(-(leak[44]-t)/leak[287]));
+        for(int x=0;x<w;++x) for(int c=0;c<3;++c) {
+            const size_t i=(size_t(y)*w+x)*3+c;
+            check(std::abs(burn[i]-input[i]-field*leak[274+c])<3e-7,"bare frame burn differs from the CPU exposure oracle");
+        }
+    }
+    leak[3]=w; leak[4]=h; leak[5]=leak[8]=1; leak[16]=w*leak[2]; leak[17]=h*leak[2]; leak[199]=2;
+    const auto with_canvas=run(gpu.get(),"spk_overscan_canvas",input,leak);
+    for(size_t i=0;i<burn.size();++i)
+        check(std::abs(with_canvas[i]-burn[i])<3e-7,"canvas and bare frame disagree on the same film coordinates");
+    std::puts("Overscan and light-leak kernels passed coverage, physical exposure and dispatch guards");return 0;
 }catch(const std::exception& ex){std::fprintf(stderr,"%s\n",ex.what());return 1;}}

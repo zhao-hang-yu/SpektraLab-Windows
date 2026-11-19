@@ -197,6 +197,7 @@ struct OverscanParams {
     // black (a black backing, or a darkroom print of the strip).
     std::string gate = "auto";       // auto | square | rounded | eared | shouldered | kicked
     std::string holes = "white";     // white (a scan: its light) | black (a black backing, or a print)
+    std::string perforation = "none";
     // The frame's number as the edge print carries it (owner, 2026-10-03):
     // 0 = the frame seed's draw, as before; 1..99 = this number, on every
     // mark that is the frame's (135: "N" and "NA"; 120: the digit by the
@@ -231,11 +232,27 @@ struct DateImprintParams {
     // RFC-031 §8 (2026-10-01): three faces of one mechanism. lcd = seven
     // segments, slanted; dots = a dot-matrix date, upright; data = shooting
     // data in a 5x7 face between frames (135) or in the margin (645).
+    std::string data_placement = "gap";
     std::string style = "lcd";       // lcd | dots | data
     double size = 1.0;               // scale on the style's own character height
     std::string corner = "br";       // frame placement: br | bl | tr | tl, in the film's frame (the camera held level)
     double inset_x = 3.0;            // mm from the gate's side to the text (frame placement)
     double inset_y = 2.4;            // mm from the gate's top/bottom to the text (frame placement)
+};
+
+struct LeakParams {
+    // off | auto | band | wash | spot. spot: every format since 2026-11-15 (120 only before). The edge
+    // burn was `edge` here on 2026-11-15; since 2026-11-16 it is `edge` below, beside the kind.
+    std::string kind = "off";
+    double amount = 1.0;             // 0..4, on overscan.fog's scale
+    double rate = 1.0;               // 0..1, the chance this frame shows the camera's leak
+    double front = -1.0;             // -1 = the camera seed's; 0..1 = the core's share of front light
+    // API-SPEC §21.8 (2026-11-15): 0 = the leak's draws are the camera's and the frame's, as before;
+    // non-zero seeds both leak streams (camera 21, frame 22) from it, and nothing else in the render moves.
+    int seed = 0;
+    // API-SPEC §21.9 (2026-11-16): the edge burn's strength, 0..4 on `amount`'s scale; 0 = none. Its own,
+    // beside the kind's: a frame can have a band and the edge burn, each at its strength.
+    double edge = 0.0;
 };
 
 struct FilmRenderParams {
@@ -246,6 +263,7 @@ struct FilmRenderParams {
     GlareParams glare;
     OverscanParams overscan;
     DateImprintParams date_imprint;
+    LeakParams leak;
 };
 
 // RFC-024: the virtual contrast mask, a neutral spatial gain on the

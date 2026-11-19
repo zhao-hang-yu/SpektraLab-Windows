@@ -14,25 +14,36 @@ export const EDGE_FORMATS = [
   { id: '120_6x8', label: '6×8', long: 76, short: 56, gauge: '120' },
   { id: '120_6x9', label: '6×9', long: 84, short: 56, gauge: '120' },
   { id: '135_xpan', label: 'XPan', long: 65, short: 24, gauge: '135', panoramic: true },
+  { id: '135_sprocket', label: '135 Full Width', long: 72, short: 36, gauge: '135', panoramic: true },
   { id: '120_6x12', label: '6×12', long: 112, short: 56, gauge: '120', panoramic: true },
   { id: '120_6x17', label: '6×17', long: 168, short: 56, gauge: '120', panoramic: true },
+  { id: '8_super', label: 'Super 8', long: 5.79, short: 4.01, gauge: 'cine' },
+  { id: '16_super', label: 'Super 16', long: 12.35, short: 7.50, gauge: 'cine' },
+  { id: '35_4perf', label: '35 mm · 4-perf', long: 24.89, short: 18.67, gauge: 'cine' },
+  { id: '65_5perf', label: '65 mm · 5-perf', long: 52.63, short: 23.01, gauge: 'cine' },
+  { id: '65_15perf', label: '65 mm · 15-perf', long: 70.41, short: 52.63, gauge: 'cine' },
 ] as const;
 export const edgeFormat = (id: string) => EDGE_FORMATS.find((f) => f.id === id);
-export function edgeEffective(edge: FilmEdgeSettings, gate?: FeatureGate, noFilm = false) { return !noFilm && gate?.overscan !== false && edge.active && !!edgeFormat(edge.format); }
+export function isCineEdge(format: string): boolean { return edgeFormat(format)?.gauge === 'cine'; }
+export function edgeEffective(edge: FilmEdgeSettings, gate?: FeatureGate, noFilm = false) {
+  const format = edgeFormat(edge.format);
+  return !noFilm && gate?.overscan !== false && edge.active && !!format && (format.gauge !== 'cine' || (gate?.overscanCine ?? !gate));
+}
 export function stockSupportsEdge(stock: Stock | undefined, format: string): boolean {
   const gauge = edgeFormat(format)?.gauge;
-  return !gauge || !stock?.formats || stock.formats.includes(gauge) || (gauge === '135' && stock.formats.includes('35mm_motion'));
+  return !gauge || gauge === 'cine' || !stock?.formats || stock.formats.includes(gauge) || (gauge === '135' && stock.formats.includes('35mm_motion'));
 }
 export function dateCamera(d: DateBackSettings, edge: FilmEdgeSettings, gate?: FeatureGate) {
   return edgeFormat(edgeEffective(edge, gate) ? edge.format : d.camera ?? '');
 }
 export function datePrints(face: string, d: DateBackSettings, edge: FilmEdgeSettings, gate?: FeatureGate): boolean {
   const camera = dateCamera(d, edge, gate);
-  return !!camera && !('panoramic' in camera) && (face !== 'data' && camera.gauge !== '120' || edgeEffective(edge, gate));
+  if (face === 'perfs') return gate?.datePerforationData !== false && edgeEffective(edge, gate) && (camera?.id === '135' || camera?.id === '135_half');
+  return !!camera && camera.gauge !== 'cine' && !('panoramic' in camera) && (face !== 'data' && camera.gauge !== '120' || edgeEffective(edge, gate));
 }
 export function dateEffective(d: DateBackSettings, edge: FilmEdgeSettings, gate?: FeatureGate, noFilm = false): boolean {
   return !noFilm && gate?.dateImprint !== false && d.active && datePrints(d.face, d, edge, gate)
-    && (d.face === 'data' || d.placement === 'frame' || edgeEffective(edge, gate));
+    && (d.face === 'data' || d.face === 'perfs' || d.placement === 'frame' || edgeEffective(edge, gate));
 }
 export function sourceGeometryFor(p: FilmParams, g: Geometry, gate?: FeatureGate, noFilm = false): Geometry | null {
   return !noFilm && (edgeEffective(p.filmEdge, gate) || (dateEffective(p.dateBack, p.filmEdge, gate) && !isIdentity(g))) ? g : null;
@@ -81,7 +92,25 @@ export function shootingText(m: FileMetadata | null): string {
   while (fields.join(' ').length > 22) fields.pop();
   return fields.join(' ');
 }
+export function perforationData(m: FileMetadata | null): string {
+  if (!m) return '';
+  const fields: string[] = [];
+  const mode = ({ 1: 'M', 2: 'P', 3: 'Av', 4: 'Tv' } as Record<number, string>)[m.exposure_program ?? 0];
+  const meter = ({ 2: 'center', 3: 'spot', 5: 'multi' } as Record<number, string>)[m.metering_mode ?? 0];
+  if (mode) fields.push(mode);
+  if (meter) fields.push(`{meter:${meter}}`);
+  if (m.shutter_s && Number.isFinite(m.shutter_s) && m.shutter_s > 0)
+    fields.push(m.shutter_s < 1 ? `${Math.round(1 / m.shutter_s)}` : `${Number(m.shutter_s.toFixed(1))}"`);
+  if (m.aperture && Number.isFinite(m.aperture) && m.aperture > 0) fields.push(`F${Number(m.aperture.toFixed(1))}`);
+  if (m.exposure_bias_ev !== undefined && Number.isFinite(m.exposure_bias_ev)) {
+    const ev = m.exposure_bias_ev;
+    fields.push(`${Math.abs(ev) < 0.05 ? '±' : ev > 0 ? '+' : '-'}${Math.abs(ev).toFixed(1)}`);
+  }
+  return fields.join('|');
+}
 const EDGE_WORDS: Record<string, [string, string?]> = {
+  kodak_portra_160nc: ['KODAK 160NC', 'KODAK 160NC-2'], kodak_portra_160vc: ['KODAK 160VC', 'KODAK 160VC-2'],
+  kodak_portra_400nc: ['KODAK 400NC', 'KODAK 400NC-3'], kodak_portra_400vc: ['KODAK 400VC', 'KODAK 400VC-3'],
   kodak_gold_200: ['KODAK GB 200-7', 'KODAK 200'], kodak_portra_800: ['KODAK PORTRA 800-3', 'KODAK PORTRA 800'],
   kodak_portra_800_push1: ['KODAK PORTRA 800-3', 'KODAK PORTRA 800'], kodak_portra_800_push2: ['KODAK PORTRA 800-3', 'KODAK PORTRA 800'],
   kodak_ultramax_400: ['KODAK GC 400'], kodak_ektachrome_100: ['KODAK E100'],
@@ -92,7 +121,7 @@ const EDGE_WORDS: Record<string, [string, string?]> = {
   kodak_tri_x_400: ['KODAK 400TX'], kodak_tmax_100: ['KODAK 100TMX'], fujifilm_neopan_acros_100_ii: ['FUJI 100 ACROS II'], ilford_hp5_plus_400: ['ILFORD HP5 PLUS'],
 };
 export function edgeText(stock: Stock | undefined, format: string): string {
-  if (!stock) return '';
+  if (!stock || isCineEdge(format)) return '';
   const own = EDGE_WORDS[stock.id];
   return own ? (edgeFormat(format)?.gauge === '120' ? own[1] ?? own[0] : own[0]) : stock.name.split('(')[0]!.trim().toUpperCase();
 }
@@ -104,7 +133,7 @@ export function resolveFilmEdgeParams(p: FilmParams, geometry: Geometry, metadat
   const cut = native ? outputSize(geometry, native) : null;
   return { ...p, filmEdge: { ...f, edgeText: edgeText(catalog.stock(p.filmStock), f.format), fNumber: metadata?.aperture ?? 0,
     framing: framingKey(geometry) }, dateBack: { ...p.dateBack, camera, dataText,
-    text: p.dateBack.face === 'data' ? dataText : captureDate(metadata?.datetime_original, p.dateBack.order),
+    text: p.dateBack.face === 'perfs' ? perforationData(metadata) : p.dateBack.face === 'data' ? dataText : captureDate(metadata?.datetime_original, p.dateBack.order),
     framing: isIdentity(geometry) ? '' : framingKey(geometry),
     frameScale: cut && native ? Math.max(cut.width, cut.height) / Math.max(native.width, native.height) : 1 } };
 }

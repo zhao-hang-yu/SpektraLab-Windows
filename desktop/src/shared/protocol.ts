@@ -139,6 +139,7 @@ export interface FileMetadata {
   aperture?: number;
   focal_mm?: number;
   exposure_program?: number;
+  metering_mode?: number;
   exposure_bias_ev?: number;
   focal_35mm?: number;
   datetime_original?: string;

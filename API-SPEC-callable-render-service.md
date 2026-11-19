@@ -718,7 +718,7 @@ fields. Design and measurements: RFC-032 §26–§29 and RFC-031 (the date back)
 | field | path | type | default | range | meaning |
 |---|---|---|---|---|---|
 | `overscan_active` | `film_render.overscan.active` | bool | `false` | — | the switch; `false` dispatches nothing (byte-identical to the pre-RFC build) |
-| `overscan_format` | `…overscan.format` | str | `"135"` | `135` \| `135_half` \| `120_645` \| `120_6x6` \| `120_6x7` \| `120_6x8` \| `120_6x9` \| `135_xpan` \| `120_6x12` \| `120_6x17` | the film and its gate (`135_half`: 18 × 24 mm half frame, below). The panoramic long formats (2026-10-03, reversing "nothing larger than 6×9"): `135_xpan` 24 × 65 on 14 perforations, `120_6x12` 56 × 112, `120_6x17` 56 × 168; their gates are `square` until real strips are measured, and none carries a date |
+| `overscan_format` | `…overscan.format` | str | `"135"` | `135` \| `135_half` \| `120_645` \| `120_6x6` \| `120_6x7` \| `120_6x8` \| `120_6x9` \| `135_xpan` \| `135_sprocket` \| `120_6x12` \| `120_6x17` | the film and its gate (`135_half`: 18 × 24 mm half frame, below). The panoramic long formats (2026-10-03, reversing "nothing larger than 6×9"): `135_xpan` 24 × 65 on 14 perforations, `120_6x12` 56 × 112, `120_6x17` 56 × 168; their gates are `square` until real strips are measured, and none carries a date. `135_sprocket` has a 72 × 36 mm gate across the 35 mm strip; it always uses the full strip with black perforations and no date back |
 | `overscan_mode` | `…overscan.mode` | str | `"strip"` | `strip` \| `filed` | the whole film width, or a filed-out carrier's sliver of rebate |
 | `overscan_gate` | `…overscan.gate` | str | `"auto"` | `auto` \| `square` \| `rounded` \| `eared` \| `shouldered` \| `kicked` | the gate's shape family (RFC-032 §29.2, §30.2); `auto` lets the camera seed pick one the format's real cameras have. `shouldered` (6×8) also seats the gate at the stock-name edge, with its ears ~1.2 mm from it and the edge print in the recess between them |
 | `overscan_holes` | `…overscan.holes` | str | `"white"` | `white` \| `black` | what shows through the perforations (past the film's long edges is `overscan_carrier`'s). `white`: the picture's white (a scan's light). `black`: a black backing or a darkroom print. Either way the cut is not a perfectly vertical knife: a slight rounding of the base shows as a faint, patchy shoulder just outside each hole (1-6 % lift, ~0.03 mm), different on every hole, plus per-hole punch tolerances, roughness and burrs (RFC-032 §30.5, §31.5) |
@@ -1211,3 +1211,40 @@ from the decode).
 ### Personal Windows fork integration (2026-10-29)
 
 The integrated host also advertises `hello.view_options: ["no_film"]` and accepts bypass on `render_view`. Unlike the upstream RGBA16 intermediate described above, this fork retains encoded floating-point ProPhoto until post-processing and output, so reducing exposure can recover highlights above 1. This is an intentional precision extension, not a claim of identical upstream bypass pixels. Both `frame_options` and `view_options` are advertised for their respective methods. DI plus `no_film: true` is rejected. The paired tests are `host_no_film.py` (native view/RAW/cache) and `host_no_film_upstream.py` (R4 export/proof).
+
+
+## 20. Physical light leaks and edge burn
+
+These shoot-side fields apply raw exposure to the film before halation and development. They work with or without a film edge. The existing `overscan_leaks` still controls the older small spool leaks independently. Desktop clients send the fields only when `capabilities.backend.film_light_leak` is `true`.
+
+| Field | Default | Values | Meaning |
+| --- | --- | --- | --- |
+| `leak_kind` | `off` | `off`, `auto`, `band`, `wash`, `spot` | Camera leak pattern. |
+| `leak_amount` | `1` | 0–4 | Strength of the selected pattern. |
+| `leak_edge` | `0` | 0–4 | Independent burn along the film's long edges. |
+| `leak_seed` | `0` | 0–2147483647 | Nonzero replaces the camera/frame seeds for the leak only. |
+| `leak_rate` | `1` | 0–1 | Fraction of frames that show the leak, before roll-position weighting. |
+| `leak_front` | `-1` | -1–1 | Front-light share; `-1` uses the camera model's value. |
+
+With the film edge off, `overscan_format`, camera seed and frame seed still locate the effect on the nominal gate; the image does not gain a border. Edge burn can be used by itself (`leak_kind: "off"`).
+
+
+## 21. Perforation data
+
+When `capabilities.backend.date_perforation_data` is `true`, the shoot-side string `date_imprint_data_placement` accepts `gap` (default, the original data line) or `perfs`. With an active 135 or half-frame 135 film edge, `perfs` prints `|`-separated fields in successive gaps between perforations. For the data-only face, send `date_imprint_style: "data"` and supply the fields in `date_imprint_text`, for example `Av|{meter:multi}|180|F8|±0.0`. Missing metadata may be omitted. No data is drawn without a compatible film edge.
+
+When `capabilities.backend.overscan_ks65` is `true`, the shoot-side `overscan_perforation` accepts `none` (default) or `ks65`. The latter requires a `120_*` film edge and simulates both rows of KS perforations retained from 65 mm stock slit to 120. The canvas dimensions do not change and the conventional 120 edge lettering is suppressed.
+
+## 22. Motion-picture film edges
+
+When `capabilities.backend.overscan_cine` is `true`, `overscan_format` also accepts the five motion-picture gauges below. Crop the input to the gate, in either orientation. With overscan active they use the strip view, accept white or black holes, and omit the factory markings and date back. The physical gate sets the scale for grain and other film effects.
+
+| Format | Gate across × along (mm) | Perforations | Strip length |
+| --- | --- | --- | --- |
+| `8_super` | 5.79 × 4.01 | One row, 4.234 mm pitch | 3:2 canvas, including slivers of both neighbouring frames |
+| `16_super` | 12.35 × 7.50 | One row at the frame line, 7.605 mm pitch | 16:9 canvas, including slivers of both neighbouring frames |
+| `35_4perf` | 24.89 × 18.67 | Two Bell & Howell rows, 4.740 mm pitch | One 4-perf advance |
+| `65_5perf` | 52.63 × 23.01 | Two KS rows, 4.75 mm pitch | One 5-perf advance |
+| `65_15perf` | 52.63 × 70.41 | Two KS rows, 4.75 mm pitch | One 15-perf advance |
+
+The neighbouring exposures reuse the input image at their own gate positions. Camera and frame seeds control the registration as they do for the still-photo gauges.

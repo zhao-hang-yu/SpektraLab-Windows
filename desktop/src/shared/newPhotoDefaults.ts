@@ -12,7 +12,7 @@ export interface NewPhotoDefaults {
 
 export const NEW_PHOTO_DEFAULTS: NewPhotoDefaults = {
   newPhotoFilmStock: FILM_PARAMS_DEFAULT.filmStock,
-  newPhotoPrintStock: FILM_PARAMS_DEFAULT.printStock,
+  newPhotoPrintStock: 'kodak_portra_endura',
 };
 
 /** Resolve removed/unknown profiles and incompatible colour/silver pairs

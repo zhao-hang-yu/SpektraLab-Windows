@@ -3,7 +3,7 @@
 // · Enlarger. Everything here runs in the engine except Crop (geometry, one
 // draw).
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScrubSlider, Section, ToggleRow, PillMenu, Checkbox, signed } from '../controls/controls';
 import { FlipH, FlipV, RotateLeft, RotateRight } from '../controls/icons';
 import { t, tz, useI18n } from '../i18n';
@@ -33,7 +33,7 @@ import {
   canMakePair,
   makePair,
 } from '../state/session';
-import { EDGE_FORMATS, dateCamera, dateEffective, datePrints, edgeEffective, stockSupportsEdge } from '@shared/filmEdge';
+import { EDGE_FORMATS, dateCamera, dateEffective, datePrints, edgeEffective, isCineEdge, stockSupportsEdge } from '@shared/filmEdge';
 import { CLIPBOARD_GROUPS, type ClipboardGroup } from '@shared/clipboard';
 import {
   CROP_ASPECT_PICKER,
@@ -238,31 +238,64 @@ export function FilmSection() {
 
 // ----------------------------------------------------- Film Edge, Date Back
 
-export function FilmEdgeSection() {
+export function FilmEdgeSection({ embedded = false }: { embedded?: boolean } = {}) {
+  const [formatFilter, setFormatFilter] = useState<'all' | '135' | '120' | 'wide' | 'cine'>('all');
   const gate = useSession((s) => s.gate);
   const fe = useSession((s) => s.sidecar.params.filmEdge);
   const stock = useSession((s) => s.catalog.stock(s.sidecar.params.filmStock));
   const tool = useSession((s) => s.tool);
   const selection = useSession((s) => s.selection);
   const pair = useSession((s) => s.pair);
+  const noFilm = useSession((s) => s.sidecar.noFilm);
+  const exporting = useSession((s) => s.batchExporting);
   const reason = unsupportedReason('overscan', gate.overscan);
-  const set = (patch: Partial<typeof fe>) => { if (gate.overscan) setParams((p) => ({ ...p, filmEdge: { ...p.filmEdge, ...patch } })); };
-  const off = !gate.overscan || !fe.active;
+  const editable = gate.overscan && !!selection && !noFilm && !exporting;
+  const set = (patch: Partial<typeof fe>) => { if (editable) setParams((p) => ({ ...p, filmEdge: { ...p.filmEdge, ...patch } })); };
+  const off = !editable || !fe.active;
+  const fullWidth = fe.format === '135_sprocket';
+  const cine = isCineEdge(fe.format);
+  const medium = fe.format.startsWith('120_');
+  const ks = medium && gate.overscanKs65 === true && fe.perforation === 'ks65';
+  const stripOnly = fullWidth || cine;
   return (
-    <Section id="filmEdge" title={t('sectionFilmEdge')} unsupported={reason}>
-      <ToggleRow label={t('sectionFilmEdge')} on={fe.active} disabled={!gate.overscan} reason={reason ?? undefined} onChange={(v) => set({ active: v })} testId="film-edge-enable" />
-      <PillMenu
-        label={t('edgeFormat')}
-        value={fe.format}
-        disabled={off || !!pair}
-        options={EDGE_FORMATS.map((v) => ({ value: v.id, label: v.id === '135_half' ? tz('Half frame', '半格') : v.label, group: v.gauge, disabled: !stockSupportsEdge(stock, v.id) }))}
-        onChange={(v) => set({ format: v })}
-        testId="film-edge-format"
-      />
+    <Section id="filmEdge" title={t('sectionFilmEdge')} unsupported={reason} embedded={embedded}>
+      <ToggleRow label={t('sectionFilmEdge')} on={fe.active} disabled={!editable} reason={reason ?? undefined} onChange={(v) => set({ active: v })} testId="film-edge-enable" />
+      {embedded ? <div className="film-edge-chooser">
+        <div className="film-edge-heading"><b>{t('edgeFormat')}</b><span>{stock?.formats?.join(' · ')}</span></div>
+        <div className="film-edge-filters" role="group" aria-label={tz('Film format filter', '画幅分类')}>
+          {(['all', '135', '120', 'wide', ...(gate.overscanCine ? ['cine' as const] : [])] as const).map((filter) =>
+            <button key={filter} type="button" aria-pressed={formatFilter === filter} data-testid={`film-edge-filter-${filter}`}
+              onClick={() => setFormatFilter(filter)}>{filter === 'all' ? tz('All', '全部') : filter === 'wide' ? tz('Wide', '宽幅') : filter === 'cine' ? tz('Cine', '电影') : filter}</button>)}
+        </div>
+        <div className="film-edge-formats" role="radiogroup" aria-label={t('edgeFormat')}>
+          {EDGE_FORMATS.filter((f) => (f.gauge !== 'cine' || gate.overscanCine) &&
+            (formatFilter === 'all' || (formatFilter === 'wide' ? 'panoramic' in f : f.gauge === formatFilter && !('panoramic' in f)))).map((f) => {
+            const supported = stockSupportsEdge(stock, f.id);
+            const label = f.id === '135_half' ? tz('Half frame', '半格') : f.id === '135_sprocket' ? tz('135 Full Width', '135 全宽') : f.label;
+            const selected = fe.format === f.id;
+            return <button key={f.id} type="button" role="radio" aria-checked={selected} data-testid={`film-edge-format-${f.id}`}
+              className={'film-edge-format' + (selected ? ' on' : '')} disabled={off || !!pair || !supported}
+              title={!supported ? tz('This film was not made in this format.', '此胶片没有该规格。') : pair ? tz('Exit the half-frame pair to change format.', '退出半格组合后更换画幅。') : label}
+              onClick={() => set({ format: f.id })}>
+              <span className="film-edge-format-icon"><i style={{ aspectRatio: `${f.long} / ${f.short}` }} /></span>
+              <b>{label}</b><small>{f.long} × {f.short} mm</small>
+            </button>;
+          })}
+        </div>
+        {formatFilter !== 'all' && <p className="film-edge-hint">{tz('Selected', '当前画幅')}: {EDGE_FORMATS.find((f) => f.id === fe.format)?.label ?? fe.format}</p>}
+        <p className="film-edge-hint">{!editable ? tz('Select a photo and enable film simulation to edit Film Edge.', '选择照片并启用胶片模拟后即可编辑片边。')
+          : !fe.active ? tz('Turn on Film Edge to choose a format.', '开启片边后即可选择画幅。')
+            : pair ? tz('Exit the half-frame pair to change format.', '退出半格组合后更换画幅。')
+              : tz('Unavailable formats were not made in this film. Select a compatible film to use them.', '灰色画幅表示该胶片没有此规格，选择兼容的胶片即可使用。')}</p>
+      </div> : <PillMenu
+        label={t('edgeFormat')} value={fe.format} disabled={off || !!pair}
+        options={EDGE_FORMATS.filter((v) => v.gauge !== 'cine' || gate.overscanCine).map((v) => ({ value: v.id, label: v.id === '135_half' ? tz('Half frame', '半格') : v.id === '135_sprocket' ? tz('135 Full Width', '135 全宽') : v.label, group: v.gauge === 'cine' ? tz('Cine', '电影') : v.gauge, disabled: !stockSupportsEdge(stock, v.id) }))}
+        onChange={(v) => set({ format: v })} testId="film-edge-format" scrollable
+      />}
       <PillMenu
         label={t('edgeView')}
-        value={fe.view}
-        disabled={off}
+        value={stripOnly ? 'strip' : fe.view}
+        disabled={off || stripOnly}
         options={[
           { value: 'strip', label: t('edgeViewStrip') },
           { value: 'filed', label: t('edgeViewFiled') },
@@ -276,10 +309,11 @@ export function FilmEdgeSection() {
       <PillMenu label={tz('Gate', '片窗')} value={fe.gate} disabled={off} options={[
         ['auto', tz('Camera', '跟随机身')], ['square', tz('Square', '直角')], ['rounded', tz('Rounded', '圆角')], ['eared', tz('Eared', '耳形')], ['shouldered', tz('Shouldered', '肩形')], ['kicked', tz('Kicked', '偏斜')],
       ].map(([value, label]) => ({ value: value!, label: label! }))} onChange={(v) => set({ gate: v })} />
-      <PillMenu label={tz('Perforations', '齿孔')} value={fe.holes} disabled={off} options={[{ value: 'white', label: tz('White', '白色') }, { value: 'black', label: tz('Black', '黑色') }]} onChange={(v) => set({ holes: v })} />
+      {gate.overscanKs65 && medium && <ToggleRow label={tz('Perforated 120', '120 齿孔')} on={ks} disabled={off} onChange={(on) => set({ perforation: on ? 'ks65' : 'none' })} testId="film-edge-ks65" />}
+      {(!medium || ks) && <PillMenu label={tz('Perforations', '齿孔')} value={fullWidth ? 'black' : fe.holes} disabled={off || fullWidth} options={[{ value: 'white', label: tz('White', '白色') }, { value: 'black', label: tz('Black', '黑色') }]} onChange={(v) => set({ holes: v })} testId="film-edge-holes" />}
       <div className="row"><span className="row-label">{tz('Camera body', '机身')} <span className="num">{fe.cameraSeed}</span></span><button className="pill-menu" disabled={off} onClick={changeFilmBody}>{tz('Another', '换一台')}</button></div>
       <div className="row"><span className="row-label">{tz('Film advance', '过片')}</span><button className="pill-menu" disabled={off} onClick={advanceFilm}>{tz('Another', '再过一格')}</button></div>
-      <ScrubSlider label={tz('Frame number', '帧号')} sublabel={tz('0 = automatic', '0 = 自动')} value={fe.frameNumber} disabled={off} range={[0, 99]} snap={1} format={(v) => String(Math.round(v))} onChange={(v) => set({ frameNumber: Math.round(v) })} />
+      {!cine && <ScrubSlider label={tz('Frame number', '帧号')} sublabel={tz('0 = automatic', '0 = 自动')} value={fe.frameNumber} disabled={off} range={[0, 99]} snap={1} format={(v) => String(Math.round(v))} onChange={(v) => set({ frameNumber: Math.round(v) })} />}
       <ScrubSlider label={t('edgeFog')} value={fe.fog} disabled={off} range={[0, 4]} zero={1} onChange={(v) => set({ fog: v })} />
       <ScrubSlider label={t('edgeLeaks')} value={fe.leaks} disabled={off} range={[0, 4]} onChange={(v) => set({ leaks: v })} />
       {fe.active && <p className="caption">{fe.edgeText}{fe.fNumber > 0 ? ` · f/${fe.fNumber}` : ''}</p>}
@@ -287,18 +321,21 @@ export function FilmEdgeSection() {
   );
 }
 
-export function DateBackSection() {
+export function DateBackSection({ embedded = false }: { embedded?: boolean } = {}) {
   const gate = useSession((s) => s.gate);
   const d = useSession((s) => s.sidecar.params.dateBack);
   const edge = useSession((s) => s.sidecar.params.filmEdge);
+  const editable = useSession((s) => !!s.selection && !s.sidecar.noFilm && !s.batchExporting) && gate.dateImprint;
   const reason = unsupportedReason('date_imprint', gate.dateImprint);
-  const set = (patch: Partial<typeof d>) => { if (gate.dateImprint) setParams((p) => ({ ...p, dateBack: { ...p.dateBack, ...patch } })); };
-  const camera = dateCamera(d, edge, gate), off = !gate.dateImprint || !d.active;
+  const set = (patch: Partial<typeof d>) => { if (editable) setParams((p) => ({ ...p, dateBack: { ...p.dateBack, ...patch } })); };
+  const camera = dateCamera(d, edge, gate), off = !editable || !d.active;
+  if (camera?.gauge === 'cine') return null;
   const medium = camera?.gauge === '120';
+  const dataOnly = d.face === 'data' || d.face === 'perfs';
   const effective = dateEffective(d, edge, gate);
   return (
-    <Section id="dateBack" title={t('sectionDateBack')} unsupported={reason}>
-      <ToggleRow label={t('dateImprint')} on={d.active} disabled={!gate.dateImprint} reason={reason ?? undefined} onChange={(v) => set({ active: v })} testId="date-back-enable" />
+    <Section id="dateBack" title={t('sectionDateBack')} unsupported={reason} embedded={embedded}>
+      <ToggleRow label={t('dateImprint')} on={d.active} disabled={!editable} reason={reason ?? undefined} onChange={(v) => set({ active: v })} testId="date-back-enable" />
       <PillMenu
         label={t('dateFace')}
         value={d.face}
@@ -307,20 +344,21 @@ export function DateBackSection() {
           { value: 'lcd', label: 'LCD' },
           { value: 'dots', label: t('dateFaceDots') },
           { value: 'data', label: t('dateFaceData') },
+          ...(gate.datePerforationData ? [{ value: 'perfs', label: tz('Perforation Data', '孔间数据') }] : []),
         ].map((v) => ({ ...v, disabled: !datePrints(v.value, d, edge, gate) }))}
         onChange={(v) => set({ face: v })}
       />
-      <PillMenu label={tz('Date order', '日期顺序')} value={d.order} disabled={off || d.face === 'data'} options={[{ value: 'japan', label: tz('Year month day', '年 月 日') }, { value: 'us', label: tz('Month day year', '月 日 年') }]} onChange={(v) => set({ order: v })} />
-      <ToggleRow label={tz('Shooting data', '拍摄数据')} on={d.withData} disabled={off || d.face === 'data' || !datePrints('data', d, edge, gate)} onChange={(v) => set({ withData: v })} />
-      <PillMenu label={tz('Placement', '位置')} value={d.placement} disabled={off || medium || d.face === 'data'} options={[{ value: 'frame', label: tz('In picture', '画面内') }, { value: 'rebate', label: tz('Film margin', '片边'), disabled: !edgeEffective(edge, gate) }]} onChange={(v) => set({ placement: v })} />
-      {!medium && d.face !== 'data' && <PillMenu
+      <PillMenu label={tz('Date order', '日期顺序')} value={d.order} disabled={off || dataOnly} options={[{ value: 'japan', label: tz('Year month day', '年 月 日') }, { value: 'us', label: tz('Month day year', '月 日 年') }]} onChange={(v) => set({ order: v })} />
+      <ToggleRow label={tz('Shooting data', '拍摄数据')} on={d.withData} disabled={off || dataOnly || !datePrints('data', d, edge, gate)} onChange={(v) => set({ withData: v })} />
+      <PillMenu label={tz('Placement', '位置')} value={d.placement} disabled={off || medium || dataOnly} options={[{ value: 'frame', label: tz('In picture', '画面内') }, { value: 'rebate', label: tz('Film margin', '片边'), disabled: !edgeEffective(edge, gate) }]} onChange={(v) => set({ placement: v })} />
+      {!medium && !dataOnly && <PillMenu
         label={t('dateCorner')}
         value={d.corner}
         disabled={off}
         options={['br', 'bl', 'tr', 'tl'].map((v) => ({ value: v, label: v.toUpperCase() }))}
         onChange={(v) => set({ corner: v })}
       />}
-      <ScrubSlider label={t('dateSize')} value={d.size} disabled={off} range={[0.4, camera?.id === '135_half' && d.face === 'data' ? 1 : 3]} zero={1} onChange={(v) => set({ size: v })} />
+      <ScrubSlider label={t('dateSize')} value={d.size} disabled={off} range={[0.4, camera?.id === '135_half' && dataOnly ? 1 : 3]} zero={1} onChange={(v) => set({ size: v })} />
       <ScrubSlider label={t('dateBrightness')} sublabel={t('dateStops')} value={d.brightnessEV} disabled={off} range={[-2, 8]} zero={3.5} onChange={(v) => set({ brightnessEV: v })} />
       {d.active && <p className="caption">{!effective ? tz('This camera/placement needs a compatible Film Edge. Panoramic formats have no date back.', '此机型或位置需要兼容的片边；全景画幅没有日期后背。') : d.text || tz('No capture date or shooting data in this file.', '文件没有拍摄日期或拍摄数据。')}{medium && effective ? tz(' · Prints on the film margin', ' · 印在片边') : ''}</p>}
     </Section>

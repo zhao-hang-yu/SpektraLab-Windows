@@ -1,8 +1,6 @@
-// windowChrome.ts — the caption buttons' and title bar's calls on the window
-// (README §1.1). The window is frameless (`decorations: false`); the title
-// bar is the app's own, with `data-tauri-drag-region` over its empty room so
-// a drag moves the window and a double-click maximises it. In the browser
-// (the layout harness) the calls only move the page's own state.
+// Windows uses its native title bar. The frameless builds provide controls
+// and a drag region in the webview. In the browser the calls only move the
+// page's own state.
 
 import { inTauri } from '../host/transport';
 import { setUi, uiStore } from './ui';
@@ -11,6 +9,8 @@ type TauriWindow = Awaited<ReturnType<typeof current>>;
 const current = async () => (await import('@tauri-apps/api/window')).getCurrentWindow();
 let win: Promise<TauriWindow> | null = null;
 const w = () => (win ??= current());
+
+export function usesNativeCaption() { return inTauri() && /\bWindows\b/.test(navigator.userAgent); }
 
 export async function minimize() { if (inTauri()) await (await w()).minimize(); }
 export async function toggleMaximize() {

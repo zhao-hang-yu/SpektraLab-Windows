@@ -41,6 +41,7 @@
 #include "printing.hpp"
 #include "strip.hpp"
 #include "setup_cache.hpp"
+#include "negative_hue.hpp"
 #include "spectral.hpp"
 
 namespace spk {
@@ -266,12 +267,51 @@ struct OverscanLayout {
     double cu = 0, cv = 0, cs = 0, ct = 0;
     double scan_rot = 0;
     bool perforated = false;
+    bool slitted_ks = false;
+    bool cine = false;
+    double perf_dt = 0.0;
     double perf_pitch = 0, perf_w = 0, perf_h = 0, perf_edge = 0, perf_r = 0, perf_phase = 0;
+    int perf_shape = 0, perf_rows = 0;
+    double perf_rmin = 0, perf_rmax = 0, perf_jit = 0;
+    double nb_prev = 0, nb_next = 0;
     double fog_amp = 0, fog_width = 0.5, fog_period = 8.0;
     uint32_t fog_seed = 0;
     struct Leak { double s = 0; int side = 0; double amp = 0, sig_s = 1, sig_t = 1; };
     std::vector<Leak> leaks;
+    struct BigLeak {
+        int kind = 0;
+        double amp = 0;                   // raw exposure at the peak, before the across-film profile
+        double sc = 0, st = 0;            // band centre / wash's leaking end / spot centre (s), spot centre (t)
+        int edge = 0;                     // the bright long edge: 0 at t = 0, 1 at t = film_w
+        double sig_a = 1, sig_b = 1;      // band: the soft side's and the sharp side's sigma, mm
+        double dir = 1;                   // band: the soft side's direction along s; wash: into the frame
+        double tilt = 0;                  // tan of the band's tilt off square
+        double front = 0;                 // the share of front light (the core's)
+        double lambda = 30;               // the decay across the film from the bright edge, mm
+        double len = 10;                  // wash: decay length; spot: radius, mm
+        double core = 1;                  // band: the front light's sigma, mm
+        // The edge burn (API-SPEC §21.9): beside the kind since 2026-11-16 (it was
+        // kind 4 the day before), so any kind and it may both be on. `e_amp` > 0 is
+        // it on: its own peak (`leak_edge`, as `amp` is `leak_amount`'s, the same
+        // jitter) and its own front share. Each long edge's own light below,
+        // [0] the edge at t = 0, [1] at t = film_w.
+        double e_amp = 0;                 // raw exposure at its peak, x e_str; 0 = none
+        double e_front = 0;               // its share of front light
+        double e_str[2] = {0, 0};         // its strength, x amp, at the very edge
+        double e_len[2] = {1, 1};         // its e-length inward, mm
+        double e_und[2] = {0, 0};         // how far the undulation moves the e-length (a fraction)
+        double e_k[2] = {0, 0};           // the undulation's two slow wave numbers along the film, rad/mm
+        double e_ph[4] = {0, 0, 0, 0};    // their phases: edge 0's two, then edge 1's
+        double e_jit = 0;                 // the strength's swing along the film, stops
+        double e_core = 0.3;              // the front light's e-length, x e_len
+        double e_p0 = 0, e_p1 = 0;        // perforated: the hole row's near and far side from each edge, mm
+        double e_pa = 0;                  // perforated: the light let in at the holes, x e_str (0 = none)
+        double e_shift = 0;               // the frame's place along the roll's pattern, mm
+    } leak;
+    double leak_rear_rgb[3] = {1, 0, 0}, leak_front_rgb[3] = {1, 1, 1};
     double fog_rgb[3] = {1, 1, 1}, date_rgb[3] = {1, 1, 0}, edge_rgb[3] = {1, 1, 0};
+    bool stripes = false;
+    double stripe_g_rgb[3] = {0, 0, 0}, stripe_r_rgb[3] = {0, 0, 0};
     double hole_cmy[3] = {0, 0, 0};
     double flare_amp = 0, flare_width = 0.05;
     // RFC-032 §29: the gate's own shape -- corner radii (s-,t-), (s+,t-),
@@ -790,6 +830,17 @@ private:
     // RFC-028: on when the DI replaces the paper (negative film, no scan_film).
     bool di_active_ = false;
     DiConstants di_;
+    gpu::BufferRef minilab_table_;
+    uint32_t minilab_side_ = 0;
+    float minilab_lo_[3]{}, minilab_inv_span_[3]{};
+    bool minilab_enlarger(double gain[3], double offset[3], std::string& error);
+    bool node_minilab(const Image& in, Image& out, std::string& error);
+    bool negative_hue_active_ = false;
+    NegativeHue negative_hue_;
+    gpu::BufferRef negative_hue_layers_, negative_hue_gamut_, negative_hue_map_;
+    bool negative_hue_offsets(double out[3], std::string& error);
+    bool negative_hue_params(float p[60], std::string& error);
+    bool node_negative_hue(const Image& negative, const Image& in, Image& out, std::string& error);
 
     // --- derived on the host, refreshed per run --------------------------
     Vec film_sensitivity_;

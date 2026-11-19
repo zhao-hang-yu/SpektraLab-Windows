@@ -263,6 +263,7 @@ Json metadata_json(const Metadata& m) {
         j.set("lens_correction",std::move(info));
     }
     if (m.exposure_program) j.set("exposure_program", number(*m.exposure_program));
+    if (m.metering_mode) j.set("metering_mode", number(*m.metering_mode));
     if (m.exposure_bias_ev) j.set("exposure_bias_ev", number(*m.exposure_bias_ev));
     if (m.focal_35mm) j.set("focal_35mm", number(*m.focal_35mm));
     if (!m.datetime_original.empty()) j.set("datetime_original", str(iso_datetime(m.datetime_original)));

@@ -12,7 +12,7 @@
 // written by the macOS app opens here and the other way round.
 
 import type { StockCatalog } from './stocks.ts';
-import { dateCamera, dateEffective, datePrints, dateScale, edgeEffective, filmFormatForWire } from './filmEdge.ts';
+import { dateCamera, dateEffective, datePrints, dateScale, edgeEffective, isCineEdge, filmFormatForWire } from './filmEdge.ts';
 
 export type ParamLayer = 'shoot' | 'print';
 export type WireValue = number | boolean | string;
@@ -148,6 +148,10 @@ export interface EffectStrengths {
   couplersActive: boolean;
   couplers: number;
   glare: number;
+  leakKind: string;
+  leakAmount: number;
+  leakEdge: number;
+  leakSeed: number;
 }
 export const EFFECTS_DEFAULT: EffectStrengths = {
   grain: 1,
@@ -160,6 +164,10 @@ export const EFFECTS_DEFAULT: EffectStrengths = {
   couplersActive: true,
   couplers: 1,
   glare: 1,
+  leakKind: 'off',
+  leakAmount: 1,
+  leakEdge: 0,
+  leakSeed: 0,
 };
 export const EFFECT_RANGES = {
   grain: [0, 2],
@@ -177,6 +185,7 @@ export const FILM_EDGE_FORMATS = [
   '135',
   '135_half',
   '135_xpan',
+  '135_sprocket',
   '120_645',
   '120_6x6',
   '120_6x7',
@@ -184,6 +193,11 @@ export const FILM_EDGE_FORMATS = [
   '120_6x9',
   '120_6x12',
   '120_6x17',
+  '8_super',
+  '16_super',
+  '35_4perf',
+  '65_5perf',
+  '65_15perf',
 ] as const;
 export type FilmEdgeFormat = (typeof FILM_EDGE_FORMATS)[number];
 
@@ -193,6 +207,7 @@ export interface FilmEdgeSettings {
   view: string;
   gate: string;
   holes: string;
+  perforation?: string;
   cameraSeed: number;
   frameSeed: number;
   frameNumber: number;
@@ -210,6 +225,7 @@ export const FILM_EDGE_DEFAULT: FilmEdgeSettings = {
   view: 'strip',
   gate: 'auto',
   holes: 'white',
+  perforation: 'none',
   cameraSeed: 1,
   frameSeed: 1,
   frameNumber: 0,
@@ -393,6 +409,10 @@ export interface FeatureGate {
   contrastMask: boolean;
   overscan: boolean;
   dateImprint: boolean;
+  filmLightLeak?: boolean;
+  datePerforationData?: boolean;
+  overscanKs65?: boolean;
+  overscanCine?: boolean;
   /** Settings ▸ Rendering: RFC-028 §10 blue compensation. */
   diBlueCompensation: boolean;
   /** FeatureFlags.toneMask on macOS: withdrawn, so never on the wire. */
@@ -405,11 +425,15 @@ export const ALL_FEATURES: FeatureGate = {
   contrastMask: true,
   overscan: true,
   dateImprint: true,
+  filmLightLeak: true,
+  datePerforationData: true,
+  overscanKs65: true,
+  overscanCine: true,
   diBlueCompensation: false,
   toneMask: false,
 };
 
-export function featureGate(unsupported: readonly string[] | undefined, diBlue = false, noFilm = false): FeatureGate {
+export function featureGate(unsupported: readonly string[] | undefined, diBlue = false, noFilm = false, filmLightLeak = false, datePerforationData = false, overscanKs65 = false, overscanCine = false): FeatureGate {
   const u = new Set(unsupported ?? []);
   return {
     noFilm,
@@ -418,6 +442,10 @@ export function featureGate(unsupported: readonly string[] | undefined, diBlue =
     contrastMask: !u.has('contrast_mask'),
     overscan: !u.has('overscan'),
     dateImprint: !u.has('date_imprint'),
+    filmLightLeak,
+    datePerforationData,
+    overscanKs65,
+    overscanCine,
     diBlueCompensation: diBlue,
     toneMask: false,
   };
@@ -444,8 +472,10 @@ export function normalizeStockPair(p: FilmParams, catalog: StockCatalog): FilmPa
   return scanFilm === p.scanFilm && printStock === p.printStock ? p : { ...p, scanFilm, printStock };
 }
 
-/** Upstream 1.3.3's per-film RMS grain calibration; the UI strength multiplies it. */
-export function ownGrain(stock: string): number {
+/** The UI strength multiplies the catalogue's per-film grain calibration. */
+export function ownGrain(stock: string, catalog?: StockCatalog): number {
+  const calibrated = catalog?.stock(stock)?.grain;
+  if (typeof calibrated === 'number' && Number.isFinite(calibrated) && calibrated > 0) return calibrated;
   switch (stock) {
     case 'kodak_tri_x_400': return 1.70;
     case 'ilford_hp5_plus_400': return 1.49;
@@ -536,7 +566,7 @@ export function wire(p: FilmParams, gate: FeatureGate = ALL_FEATURES, catalog?: 
   f.push(
     { name: 'halation_amount', value: clamp(e.halation, r.halation[0], r.halation[1]), layer: 'shoot' },
     { name: 'halation_scatter_amount', value: clamp(e.scatter, r.scatter[0], r.scatter[1]), layer: 'shoot' },
-    { name: 'grain_amount', value: clamp(e.grain * ownGrain(p.filmStock), r.grain[0], r.grain[1]), layer: 'shoot' },
+    { name: 'grain_amount', value: clamp(e.grain * ownGrain(p.filmStock, catalog), r.grain[0], r.grain[1]), layer: 'shoot' },
     { name: 'dir_couplers_active', value: e.couplersActive, layer: 'shoot' },
     { name: 'dir_couplers_amount', value: clamp(e.couplers, r.couplers[0], r.couplers[1]), layer: 'shoot' },
     { name: 'glare_amount', value: clamp(e.glare, r.glare[0], r.glare[1]), layer: 'print' },
@@ -568,19 +598,38 @@ export function wire(p: FilmParams, gate: FeatureGate = ALL_FEATURES, catalog?: 
     const fe = p.filmEdge;
     f.push({ name: 'overscan_active', value: edgeEffective(fe, gate), layer: 'shoot' });
     f.push({ name: 'overscan_pair', value: fe.pair, layer: 'shoot' });
+    if (gate.overscanKs65) f.push({ name: 'overscan_perforation', value: edgeEffective(fe, gate) && fe.format.startsWith('120_') && fe.perforation === 'ks65' ? 'ks65' : 'none', layer: 'shoot' });
     if (edgeEffective(fe, gate)) {
       f.push(
         { name: 'overscan_format', value: fe.format, layer: 'shoot' },
-        { name: 'overscan_mode', value: fe.view, layer: 'shoot' },
+        { name: 'overscan_mode', value: fe.format === '135_sprocket' || isCineEdge(fe.format) ? 'strip' : fe.view, layer: 'shoot' },
         { name: 'overscan_gate', value: fe.gate, layer: 'shoot' },
-        { name: 'overscan_holes', value: fe.holes, layer: 'shoot' },
+        { name: 'overscan_holes', value: fe.format === '135_sprocket' ? 'black' : fe.holes, layer: 'shoot' },
         { name: 'overscan_camera_seed', value: clamp(Math.round(fe.cameraSeed), 0, 2147483647), layer: 'shoot' },
         { name: 'overscan_frame_seed', value: clamp(Math.round(fe.frameSeed), 0, 2147483647), layer: 'shoot' },
         { name: 'overscan_frame_number', value: clamp(Math.round(fe.frameNumber), 0, 99), layer: 'shoot' },
         { name: 'overscan_fog', value: clamp(fe.fog, 0, 4), layer: 'shoot' },
         { name: 'overscan_leaks', value: clamp(fe.leaks, 0, 4), layer: 'shoot' },
-        { name: 'overscan_edge_text', value: fe.edgeText, layer: 'shoot' },
+        { name: 'overscan_edge_text', value: isCineEdge(fe.format) ? '' : fe.edgeText, layer: 'shoot' },
         { name: 'overscan_f_number', value: clamp(fe.fNumber, 0, 64), layer: 'shoot' },
+      );
+    }
+  }
+  if (gate.filmLightLeak) {
+    const kind = ['auto', 'band', 'wash', 'spot'].includes(e.leakKind) ? e.leakKind : 'off';
+    f.push(
+      { name: 'leak_kind', value: kind, layer: 'shoot' },
+      { name: 'leak_amount', value: clamp(e.leakAmount, 0, 4), layer: 'shoot' },
+      { name: 'leak_edge', value: clamp(e.leakEdge, 0, 4), layer: 'shoot' },
+      { name: 'leak_seed', value: clamp(Math.round(e.leakSeed), 0, 2147483647), layer: 'shoot' },
+    );
+    if (!edgeEffective(p.filmEdge, gate) && (kind !== 'off' || e.leakEdge > 0)) {
+      const format = p.filmEdge.pair ? '135_half' : p.filmFrame === '120' ? '120_6x6' : '135';
+      if (!dateEffective(p.dateBack, p.filmEdge, gate))
+        f.push({ name: 'overscan_format', value: format, layer: 'shoot' });
+      f.push(
+        { name: 'overscan_camera_seed', value: clamp(Math.round(p.filmEdge.cameraSeed), 0, 2147483647), layer: 'shoot' },
+        { name: 'overscan_frame_seed', value: clamp(Math.round(p.filmEdge.frameSeed), 0, 2147483647), layer: 'shoot' },
       );
     }
   }
@@ -588,20 +637,21 @@ export function wire(p: FilmParams, gate: FeatureGate = ALL_FEATURES, catalog?: 
     const d = p.dateBack;
     const on = dateEffective(d, p.filmEdge, gate), camera = dateCamera(d, p.filmEdge, gate), scale = dateScale(p, gate);
     f.push({ name: 'date_imprint_active', value: on, layer: 'shoot' });
+    if (gate.datePerforationData) f.push({ name: 'date_imprint_data_placement', value: d.face === 'perfs' && on ? 'perfs' : 'gap', layer: 'shoot' });
     if (on) {
       if (!(gate.overscan && p.filmEdge.active))
         f.push({ name: 'overscan_format', value: d.camera ?? '135', layer: 'shoot' });
       f.push(
-        { name: 'date_imprint_style', value: d.face, layer: 'shoot' },
+        { name: 'date_imprint_style', value: d.face === 'perfs' ? 'data' : d.face, layer: 'shoot' },
         { name: 'date_imprint_text', value: d.customText ?? d.text, layer: 'shoot' },
         { name: 'date_imprint_text_b', value: p.filmEdge.pair ? d.textB : '', layer: 'shoot' },
         { name: 'date_imprint_placement', value: d.placement, layer: 'shoot' },
         { name: 'date_imprint_corner', value: d.corner, layer: 'shoot' },
         { name: 'date_imprint_inset_x', value: clamp(d.insetXMM * scale, 0, 30), layer: 'shoot' },
         { name: 'date_imprint_inset_y', value: clamp(d.insetYMM * scale, 0, 30), layer: 'shoot' },
-        { name: 'date_imprint_size', value: clamp((d.face === 'data' && camera?.id === '135_half' ? Math.min(d.size, 1) : d.size) * scale, 0.4, 3), layer: 'shoot' },
+        { name: 'date_imprint_size', value: clamp(((d.face === 'data' || d.face === 'perfs') && camera?.id === '135_half' ? Math.min(d.size, 1) : d.size) * scale, 0.4, 3), layer: 'shoot' },
         { name: 'date_imprint_ev', value: clamp(d.brightnessEV, -2, 8), layer: 'shoot' },
-        { name: 'date_imprint_data_text', value: d.withData && d.face !== 'data' && datePrints('data', d, p.filmEdge, gate) ? d.dataText : '', layer: 'shoot' },
+        { name: 'date_imprint_data_text', value: d.withData && d.face !== 'data' && d.face !== 'perfs' && datePrints('data', d, p.filmEdge, gate) ? d.dataText : '', layer: 'shoot' },
       );
     }
   }

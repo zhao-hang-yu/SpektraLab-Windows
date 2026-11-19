@@ -2528,7 +2528,7 @@ function takeHostState(st: HostState) {
     set({
       hello: st.hello,
       unsupported,
-      gate: featureGate(unsupported, settingsStore.getState().diBlueCompensation, st.hello.view_options?.includes('no_film') ?? false),
+      gate: featureGate(unsupported, settingsStore.getState().diBlueCompensation, st.hello.view_options?.includes('no_film') ?? false, st.hello.capabilities?.backend?.film_light_leak === true, st.hello.capabilities?.backend?.date_perforation_data === true, st.hello.capabilities?.backend?.overscan_ks65 === true, st.hello.capabilities?.backend?.overscan_cine === true),
     });
     queueImportPreviews();
     // A new host (first start or a restart): re-open the frame from its sidecar.

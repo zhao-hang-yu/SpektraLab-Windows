@@ -7,6 +7,10 @@ import stockData from '../../../modern_UI/Spektrafilm/Spektrafilm/Resources/Stoc
 const catalog = new StockCatalog(stockData.stocks);
 
 describe('resolving new photograph defaults', () => {
+  it('opens new photographs on the calibrated Portra 400 and Portra Endura pair', () => {
+    expect(newPhotoStocks(catalog, NEW_PHOTO_DEFAULTS)).toEqual({ filmStock: 'kodak_portra_400', printStock: 'kodak_portra_endura' });
+    expect(newPhotoStocks(EMPTY_CATALOG, NEW_PHOTO_DEFAULTS)).toEqual({ filmStock: 'kodak_portra_400', printStock: 'kodak_portra_endura' });
+  });
   it('falls back from removed stocks and rejects a paper ID used as a film ID', () => {
     for (const film of ['retired_stock', 'kodak_2383']) {
       const stocks = newPhotoStocks(catalog, { newPhotoFilmStock: film, newPhotoPrintStock: 'missing_paper' });
@@ -27,6 +31,6 @@ describe('resolving new photograph defaults', () => {
     const preferred = newPhotoSidecar(catalog, { newPhotoFilmStock: 'kodak_tri_x_400', newPhotoPrintStock: 'kodak_2383' });
     expect(preferred.params).toMatchObject({ filmStock: 'kodak_tri_x_400', printStock: 'ilford_multigrade_iv_rc' });
     expect(newSidecar()).toEqual(neutral);
-    expect(NEW_PHOTO_DEFAULTS).toEqual({ newPhotoFilmStock: neutral.params.filmStock, newPhotoPrintStock: neutral.params.printStock });
+    expect(neutral.params).toMatchObject({ filmStock: 'kodak_portra_400', printStock: 'kodak_supra_endura' });
   });
 });

@@ -43,6 +43,8 @@ add_library(spektralab_core STATIC
     src/core/hanatos.cpp
     src/core/json.cpp
     src/core/latitude_fit.cpp
+    src/core/minilab.cpp
+    src/core/negative_hue.cpp
     src/core/numeric.cpp
     src/core/params.cpp
     src/core/print_lut.cpp
@@ -155,8 +157,8 @@ if(SPEKTRALAB_PORTABLE_BACKEND)
             spk_lognormal_field spk_rng_probe spk_mul spk_glare_add
             spk_reduce_max spk_boost spk_highlight_headroom spk_bw_correct spk_edr spk_cctf_decode
             spk_zoom_bilinear_mirror spk_geometry_resample_df
-            spk_lut3d_trilinear spk_di_normalise spk_di_encode spk_scene_latitude
-            spk_overscan_canvas spk_overscan_add_mask spk_overscan_film_present spk_overscan_light
+            spk_lut3d_trilinear spk_di_normalise spk_di_encode spk_scene_latitude spk_negative_hue
+            spk_overscan_canvas spk_overscan_add_mask spk_overscan_film_present spk_overscan_light spk_leak_frame
             CACHE INTERNAL "")
         set(vulkan_spirv)
         file(GLOB vulkan_includes "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders/vulkan/*.glsl")
@@ -192,6 +194,8 @@ if(SPEKTRALAB_PORTABLE_BACKEND)
                     "${CMAKE_CURRENT_SOURCE_DIR}/resources_product/paper_grades.json" "${vulkan_resource_dir}/paper_grades.json"
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                     "${CMAKE_CURRENT_SOURCE_DIR}/resources_product/neutral_print_filters.json" "${vulkan_resource_dir}/product-neutral-print-filters.json"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${CMAKE_CURRENT_SOURCE_DIR}/resources_product/neutral_print_filters_colour.json" "${vulkan_resource_dir}/neutral_print_filters_colour.json"
             COMMAND "${CMAKE_COMMAND}" -E copy_directory
                     "${CMAKE_CURRENT_SOURCE_DIR}/../modern_UI/Spektrafilm/Spektrafilm/Resources/DI" "${vulkan_resource_dir}/DI"
             DEPENDS ${vulkan_spirv}
@@ -306,6 +310,11 @@ if(SPEKTRALAB_PORTABLE_BACKEND)
         endif()
 
         if(BUILD_TESTING)
+            add_executable(spk_vulkan_minilab tests/gpu_vulkan_minilab.cpp)
+            target_link_libraries(spk_vulkan_minilab PRIVATE spektralab_engine)
+            target_include_directories(spk_vulkan_minilab PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
+            add_test(NAME spk_vulkan_minilab COMMAND spk_vulkan_minilab "${vulkan_resource_dir}")
+
             add_executable(spk_vulkan_smoke tests/gpu_vulkan_smoke.cpp)
             target_include_directories(spk_vulkan_smoke PRIVATE
                 "${CMAKE_CURRENT_SOURCE_DIR}/include"

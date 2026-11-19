@@ -114,6 +114,24 @@ int main(int argc,char** argv) {
                 check(changed.at(key).as_double()==expected.at(key).as_double(),std::string("silver neutral pack leaked into colour: ")+key);
             std::printf("PASS %s tone, grades, filters, cache and colour return\n",film);
         }
+        const struct { const char* film; double m; double y; } portra[] = {
+            {"kodak_portra_160nc", 53.0309, 38.179}, {"kodak_portra_160vc", 51.116, 35.4986},
+            {"kodak_portra_400nc", 52.012, 37.0049}, {"kodak_portra_400vc", 47.7307, 34.9536},
+        };
+        std::vector<uint16_t> previous;
+        for (const auto& [id, m, y] : portra) {
+            Json p = parse(R"({"print_stock":"kodak_portra_endura","grain_active":false,"glare_active":false,"auto_exposure":false})");
+            p.set("film_stock", Json(std::string(id)));
+            auto s = open(engine.get(), input, p);
+            const auto resolved = state(engine.get(), s.get());
+            check(std::abs(resolved.at("m_filter_neutral").as_double() - m) < 1e-8 &&
+                  std::abs(resolved.at("y_filter_neutral").as_double() - y) < 1e-8,
+                  std::string(id) + ": the staged Portra Endura pack was not applied");
+            auto pixels = render(engine.get(), s.get());
+            check(pixels != previous, std::string(id) + ": output repeated the previous stock");
+            previous = std::move(pixels);
+            std::printf("PASS %s with its own Portra Endura filter pack\n", id);
+        }
         return 0;
     }catch(const std::exception& e){std::fprintf(stderr,"%s\n",e.what());return 1;}
 }

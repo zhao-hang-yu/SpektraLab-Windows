@@ -27,10 +27,12 @@ export interface SectionProps {
   menu?: { label: string; onSelect: () => void; disabled?: boolean; checked?: boolean; /** A rule above the item. */ divider?: boolean; testId?: string }[];
   /** A feature the host cannot do: shown, greyed, with the reason. */
   unsupported?: string | null;
+  embedded?: boolean;
 }
 
-export function Section({ id, title, children, trailing, onReset, resetHelp, resetEnabled = true, menu, unsupported }: SectionProps) {
-  const collapsed = useSettings((s) => !!s.collapsedSections[id]);
+export function Section({ id, title, children, trailing, onReset, resetHelp, resetEnabled = true, menu, unsupported, embedded = false }: SectionProps) {
+  const collapsed = useSettings((s) => !embedded && !!s.collapsedSections[id]);
+  if (embedded) return <div className="section-body" title={unsupported ?? undefined} aria-disabled={!!unsupported}>{children}</div>;
   return (
     <section className={'section' + (unsupported ? ' unsupported' : '')} data-section={id}>
       <div className="section-header">

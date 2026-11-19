@@ -47,11 +47,24 @@ describe('the released black-and-white catalogue and wire', () => {
     expect(fullDelta(p, ALL_FEATURES, catalog).grain_amount).toBe(Math.min(2, 2 * amount));
   });
 
-  it('leaves the colour wire unchanged and restores its grain/EDR settings when leaving silver', () => {
+  it.each([
+    ['kodak_portra_400', 1.06], ['kodak_ektar_100', 0.79], ['kodak_portra_800', 1.23],
+    ['kodak_portra_160nc', 0.79], ['kodak_portra_160vc', 0.69],
+    ['kodak_portra_400nc', 0.94], ['kodak_portra_400vc', 0.81],
+    ['kodak_kodachrome_64', 1.15], ['cinestill_800t', 1.01],
+  ])('%s applies the release catalogue calibration to the grain slider', (id, amount) => {
+    const p = { ...structuredClone(FILM_PARAMS_DEFAULT), filmStock: id };
+    expect(catalog.stock(id)?.stage).toBe('filming');
+    expect(fullDelta(p, ALL_FEATURES, catalog).grain_amount).toBe(amount);
+    p.effects.grain = 0.5;
+    expect(fullDelta(p, ALL_FEATURES, catalog).grain_amount).toBe(amount * 0.5);
+  });
+
+  it('restores colour grain and EDR settings when leaving silver', () => {
     const colour = { ...structuredClone(FILM_PARAMS_DEFAULT), extendedDynamicRange: true };
-    expect(fullDelta(colour, ALL_FEATURES, catalog)).toEqual(fullDelta(colour, ALL_FEATURES));
+    expect(fullDelta(colour, ALL_FEATURES, catalog)).toEqual({ ...fullDelta(colour, ALL_FEATURES), grain_amount: 1.06 });
     const d = delta(colour, { ...mono(), extendedDynamicRange: true }, ALL_FEATURES, catalog);
-    expect(d.delta).toMatchObject({ grain_amount: 1, grain_sublayers_active: true, extended_dynamic_range: true });
+    expect(d.delta).toMatchObject({ grain_amount: 1.06, grain_sublayers_active: true, extended_dynamic_range: true });
     expect('c_filter_neutral' in d.delta).toBe(false);
     expect('y_filter_neutral' in d.delta).toBe(false);
   });

@@ -28,6 +28,15 @@ function memory(seed: Record<string, string> = {}) {
   return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) };
 }
 
+it('persists favourite stocks and ignores invalid and duplicate saved IDs', async () => {
+  const storage = memory({ 'ui2.settings': '{"favouriteStocks":["kodak_gold_200",3,"",null,"kodak_gold_200"]}' });
+  const store = createSettingsStore(storage);
+  expect(store.getState().favouriteStocks).toEqual(['kodak_gold_200']);
+  store.getState().set('favouriteStocks', ['kodak_gold_200', 'kodak_portra_endura']);
+  await Promise.resolve();
+  expect(createSettingsStore(storage).getState().favouriteStocks).toEqual(['kodak_gold_200', 'kodak_portra_endura']);
+});
+
 describe('recent folders', () => {
   it('puts the newest folder first, once, and keeps the list short', () => {
     let recent: string[] = [];

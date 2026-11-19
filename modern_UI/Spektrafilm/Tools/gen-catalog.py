@@ -62,7 +62,11 @@ FORMATS = {
     "kodak_gold_200": ["135", "120"],
     "kodak_kodachrome_64": ["135", "120"],
     "kodak_portra_160": ["135", "120"],
+    "kodak_portra_160nc": ["135", "120"],
+    "kodak_portra_160vc": ["135", "120"],
     "kodak_portra_400": ["135", "120"],
+    "kodak_portra_400nc": ["135", "120"],
+    "kodak_portra_400vc": ["135", "120"],
     "kodak_portra_800": ["135", "120"],
     "kodak_portra_800_push1": ["135", "120"],
     "kodak_portra_800_push2": ["135", "120"],
@@ -82,12 +86,30 @@ FORMATS = {
 }
 
 
+# Mac 2.4.2's StockCatalog.json (tools/gen_catalog.py): the scale at UI grain 1.
+GRAIN = {
+    "kodak_portra_400": 1.06, "kodak_gold_200": 0.97, "kodak_ektar_100": 0.79,
+    "kodak_vision3_500t": 1.01, "cinestill_800t": 1.01, "fujifilm_pro_400h": 1.20,
+    "kodak_portra_160": 0.92, "kodak_portra_800": 1.23,
+    "kodak_portra_800_push1": 1.23, "kodak_portra_800_push2": 1.23,
+    "kodak_portra_160nc": 0.79, "kodak_portra_160vc": 0.69,
+    "kodak_portra_400nc": 0.94, "kodak_portra_400vc": 0.81,
+    "kodak_ultramax_400": 1.09, "fujifilm_c200": 0.70, "fujifilm_xtra_400": 0.74,
+    "kodak_ektachrome_100": 0.88, "kodak_kodachrome_64": 1.15,
+    "fujifilm_provia_100f": 0.96, "fujifilm_velvia_100": 0.99,
+    "kodak_vision3_50d": 0.69, "kodak_vision3_200t": 1.01,
+    "kodak_vision3_250d": 0.83, "kodak_verita_200d": 1.06,
+    "kodak_tri_x_400": 1.70, "kodak_tmax_100": 0.74,
+    "fujifilm_neopan_acros_100_ii": 0.64, "ilford_hp5_plus_400": 1.49,
+}
+
+
 def main() -> None:
     (OUT / "FilmCovers").mkdir(parents=True, exist_ok=True)
     luts = json.loads(PRINT_LUTS.read_text())
     stocks = []
     for path in sorted([*PROFILES.glob("*.json"), *PRODUCT_PROFILES.glob("*.json")], key=lambda f: f.stem):
-        doc = json.loads(path.read_text())
+        doc = json.loads(path.read_text(encoding="utf-8"))
         info = doc["info"]
         if "derived_from" in doc:
             # An alias (CineStill 800T): the base's info with the alias's own
@@ -96,13 +118,14 @@ def main() -> None:
         sid = path.stem
         cover = None
         if sid in COVERS:
-            src = next(COVERS_SRC.glob(f"*{COVERS[sid]}*"), None)
-            if src:
-                cover = f"{sid}.jpg"
-                dst = OUT / "FilmCovers" / cover
-                if not dst.exists():
+            dst = OUT / "FilmCovers" / f"{sid}.jpg"
+            if not dst.is_file():
+                src = next(COVERS_SRC.glob(f"*{COVERS[sid]}*"), None)
+                if src:
                     subprocess.run(["sips", "-Z", "160", str(src), "--out", str(dst)],
                                    check=True, capture_output=True)
+            if dst.is_file():
+                cover = dst.name
         entry = {
             "id": sid,
             "name": info.get("name", sid),
@@ -120,6 +143,8 @@ def main() -> None:
             entry["noAntihalationLayer"] = True    # made without one: CineStill 800T
         if sid in FORMATS:
             entry["formats"] = FORMATS[sid]
+        if sid in GRAIN:
+            entry["grain"] = GRAIN[sid]
         stocks.append(entry)
     (OUT / "StockCatalog.json").write_text(json.dumps({"stocks": stocks}, indent=1))
     print(f"wrote {len(stocks)} stocks")

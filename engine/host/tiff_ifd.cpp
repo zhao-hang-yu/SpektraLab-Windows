@@ -148,6 +148,7 @@ void capture_exif_value(Metadata& meta, uint16_t tag, uint16_t type, uint32_t co
     if (count == 1 && type == 3) {
         const double number = u16(0);
         if (tag == 0x8822 && number > 0) meta.exposure_program = number;
+        if (tag == 0x9207 && number > 0) meta.metering_mode = number;
         if (tag == 0xA405 && number > 0) meta.focal_35mm = number;
     }
     if (tag == 0x9204 && count == 1 && type == 10) {

@@ -14,7 +14,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 1.01
   },
   {
    "id": "fujifilm_c200",
@@ -28,7 +29,8 @@
    "cover": null,
    "formats": [
     "135"
-   ]
+   ],
+   "grain": 0.7
   },
   {
    "id": "fujifilm_crystal_archive_typeii",
@@ -55,7 +57,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 0.64
   },
   {
    "id": "fujifilm_pro_400h",
@@ -70,7 +73,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 1.2
   },
   {
    "id": "fujifilm_provia_100f",
@@ -85,7 +89,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 0.96
   },
   {
    "id": "fujifilm_velvia_100",
@@ -100,7 +105,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 0.99
   },
   {
    "id": "fujifilm_xtra_400",
@@ -115,7 +121,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 0.74
   },
   {
    "id": "ilford_hp5_plus_400",
@@ -131,7 +138,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 1.49
   },
   {
    "id": "ilford_multigrade_iv_rc",
@@ -182,7 +190,8 @@
     "120",
     "16mm",
     "super8"
-   ]
+   ],
+   "grain": 0.88
   },
   {
    "id": "kodak_ektacolor_edge",
@@ -208,7 +217,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 0.79
   },
   {
    "id": "kodak_endura_premier",
@@ -234,7 +244,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 0.97
   },
   {
    "id": "kodak_kodachrome_64",
@@ -249,7 +260,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 1.15
   },
   {
    "id": "kodak_portra_160",
@@ -264,7 +276,40 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 0.92
+  },
+  {
+   "id": "kodak_portra_160nc",
+   "name": "Kodak Portra 160NC",
+   "stage": "filming",
+   "use": "still",
+   "type": "negative",
+   "targetPrint": "kodak_portra_endura",
+   "hasPreviewLUT": false,
+   "pairedFilm": null,
+   "cover": null,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "grain": 0.79
+  },
+  {
+   "id": "kodak_portra_160vc",
+   "name": "Kodak Portra 160VC",
+   "stage": "filming",
+   "use": "still",
+   "type": "negative",
+   "targetPrint": "kodak_portra_endura",
+   "hasPreviewLUT": false,
+   "pairedFilm": null,
+   "cover": null,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "grain": 0.69
   },
   {
    "id": "kodak_portra_400",
@@ -279,7 +324,40 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 1.06
+  },
+  {
+   "id": "kodak_portra_400nc",
+   "name": "Kodak Portra 400NC",
+   "stage": "filming",
+   "use": "still",
+   "type": "negative",
+   "targetPrint": "kodak_portra_endura",
+   "hasPreviewLUT": false,
+   "pairedFilm": null,
+   "cover": null,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "grain": 0.94
+  },
+  {
+   "id": "kodak_portra_400vc",
+   "name": "Kodak Portra 400VC",
+   "stage": "filming",
+   "use": "still",
+   "type": "negative",
+   "targetPrint": "kodak_portra_endura",
+   "hasPreviewLUT": false,
+   "pairedFilm": null,
+   "cover": null,
+   "formats": [
+    "135",
+    "120"
+   ],
+   "grain": 0.81
   },
   {
    "id": "kodak_portra_800",
@@ -294,7 +372,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 1.23
   },
   {
    "id": "kodak_portra_800_push1",
@@ -309,7 +388,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 1.23
   },
   {
    "id": "kodak_portra_800_push2",
@@ -324,7 +404,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 1.23
   },
   {
    "id": "kodak_portra_endura",
@@ -362,7 +443,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 0.74
   },
   {
    "id": "kodak_tri_x_400",
@@ -378,7 +460,8 @@
    "formats": [
     "135",
     "120"
-   ]
+   ],
+   "grain": 1.7
   },
   {
    "id": "kodak_ultra_endura",
@@ -403,7 +486,8 @@
    "cover": "kodak_ultramax_400.jpg",
    "formats": [
     "135"
-   ]
+   ],
+   "grain": 1.09
   },
   {
    "id": "kodak_verita_200d",
@@ -418,7 +502,8 @@
    "formats": [
     "16mm",
     "35mm_motion"
-   ]
+   ],
+   "grain": 1.06
   },
   {
    "id": "kodak_vision3_200t",
@@ -434,7 +519,8 @@
     "16mm",
     "super8",
     "35mm_motion"
-   ]
+   ],
+   "grain": 1.01
   },
   {
    "id": "kodak_vision3_250d",
@@ -449,7 +535,8 @@
    "formats": [
     "16mm",
     "35mm_motion"
-   ]
+   ],
+   "grain": 0.83
   },
   {
    "id": "kodak_vision3_500t",
@@ -465,7 +552,8 @@
     "16mm",
     "super8",
     "35mm_motion"
-   ]
+   ],
+   "grain": 1.01
   },
   {
    "id": "kodak_vision3_50d",
@@ -481,7 +569,8 @@
     "16mm",
     "super8",
     "35mm_motion"
-   ]
+   ],
+   "grain": 0.69
   }
  ]
 }

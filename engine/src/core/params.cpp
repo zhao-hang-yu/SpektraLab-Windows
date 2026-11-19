@@ -210,6 +210,14 @@ const SchemaField kFields[] = {
     // back-reflection halo only (a film with no anti-halation layer). Native
     // only, SHOOT, after `camera_filter`. Every film with a layer ignores it.
     {"halation_headroom_ev",     "film_render.halation.headroom_ev",      F, SHOOT, true, 0.0, 8.0, false},
+    {"overscan_perforation", "film_render.overscan.perforation", S, SHOOT, false, 0, 0, false},
+    {"date_imprint_data_placement", "film_render.date_imprint.data_placement", S, SHOOT, false, 0, 0, false},
+    {"leak_kind", "film_render.leak.kind", S, SHOOT, false, 0.0, 0.0, false},
+    {"leak_amount", "film_render.leak.amount", F, SHOOT, true, 0.0, 4.0, false},
+    {"leak_rate", "film_render.leak.rate", F, SHOOT, true, 0.0, 1.0, false},
+    {"leak_front", "film_render.leak.front", F, SHOOT, true, -1.0, 1.0, false},
+    {"leak_seed", "film_render.leak.seed", I, SHOOT, true, 0.0, 2147483647.0, false},
+    {"leak_edge", "film_render.leak.edge", F, SHOOT, true, 0.0, 4.0, false},
     // The app's *preview resolution*: the `live` tier's long edge, and so the
     // size every interactive edit renders at. PRINT layer, because it is a
     // decision about the canvas rather than about the film -- but it is one of
@@ -271,6 +279,10 @@ double* float_slot(Params& p, const std::string& path) {
     if (path == "film_render.halation.scatter_amount") return &p.film_render.halation.scatter_amount;
     if (path == "film_render.grain.amount") return &p.film_render.grain.amount;
     if (path == "film_render.overscan.fog") return &p.film_render.overscan.fog;
+    if (path == "film_render.leak.amount") return &p.film_render.leak.amount;
+    if (path == "film_render.leak.rate") return &p.film_render.leak.rate;
+    if (path == "film_render.leak.front") return &p.film_render.leak.front;
+    if (path == "film_render.leak.edge") return &p.film_render.leak.edge;
     if (path == "film_render.overscan.leaks") return &p.film_render.overscan.leaks;
     if (path == "film_render.overscan.f_number") return &p.film_render.overscan.f_number;
     if (path == "film_render.date_imprint.exposure_ev") return &p.film_render.date_imprint.exposure_ev;
@@ -322,10 +334,13 @@ std::string* str_slot(Params& p, const std::string& path) {
     if (path == "camera.scene_latitude.norm") return &p.camera.scene_latitude.norm;
     if (path == "print_render.contrast_mask.scheme") return &p.print_render.contrast_mask.scheme;
     if (path == "film_render.overscan.format") return &p.film_render.overscan.format;
+    if (path == "film_render.leak.kind") return &p.film_render.leak.kind;
+    if (path == "film_render.overscan.perforation") return &p.film_render.overscan.perforation;
     if (path == "film_render.overscan.mode") return &p.film_render.overscan.mode;
     if (path == "film_render.overscan.edge_text") return &p.film_render.overscan.edge_text;
     if (path == "film_render.date_imprint.text") return &p.film_render.date_imprint.text;
     if (path == "film_render.date_imprint.text_b") return &p.film_render.date_imprint.text_b;
+    if (path == "film_render.date_imprint.data_placement") return &p.film_render.date_imprint.data_placement;
     if (path == "film_render.date_imprint.data_text") return &p.film_render.date_imprint.data_text;
     if (path == "film_render.date_imprint.placement") return &p.film_render.date_imprint.placement;
     if (path == "film_render.date_imprint.style") return &p.film_render.date_imprint.style;
@@ -342,6 +357,7 @@ int* int_slot(Params& p, const std::string& path) {
     if (path == "settings.strip_rows") return &p.settings.strip_rows;
     if (path == "settings.strip_budget_bytes") return &p.settings.strip_budget_bytes;
     if (path == "film_render.overscan.camera_seed") return &p.film_render.overscan.camera_seed;
+    if (path == "film_render.leak.seed") return &p.film_render.leak.seed;
     if (path == "film_render.overscan.frame_seed") return &p.film_render.overscan.frame_seed;
     if (path == "film_render.overscan.frame_number") return &p.film_render.overscan.frame_number;
     return nullptr;
@@ -459,6 +475,24 @@ bool validate_delta(const Json& delta, std::string& error, std::string& param) {
                     "' is not a norm (power, y, max)";
             param = kv.first;
             return false;
+        }
+        if (kv.first == "date_imprint_data_placement" && v.as_string() != "gap" && v.as_string() != "perfs") {
+            param = kv.first;
+            error = "date_imprint_data_placement must be gap or perfs";
+            return false;
+        }
+        if (kv.first == "overscan_perforation" && v.as_string() != "none" && v.as_string() != "ks65") {
+            param = kv.first;
+            error = "overscan_perforation must be none or ks65";
+            return false;
+        }
+        if (kv.first == "leak_kind") {
+            const auto kind = v.as_string();
+            if (kind != "off" && kind != "auto" && kind != "band" && kind != "wash" && kind != "spot") {
+                param = kv.first;
+                error = "leak_kind must be off, auto, band, wash or spot";
+                return false;
+            }
         }
         if (f->has_range) {
             const double d = v.as_double();

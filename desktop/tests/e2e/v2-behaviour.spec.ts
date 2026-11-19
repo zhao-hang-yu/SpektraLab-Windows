@@ -20,6 +20,90 @@ const state = <T>(page: Page, expr: string) => page.evaluate((e) => {
 
 test.beforeEach(async ({ page }) => { await page.setViewportSize({ width: 1536, height: 816 }); });
 
+test('the paper grid scrolls with the mouse wheel and shows the whole last card', async ({ page }) => {
+  await open(page);
+  const papers = page.getByTestId('paper-cards');
+  const last = papers.locator('[data-stock]').last();
+  await papers.hover();
+  await page.mouse.wheel(0, 1024);
+  await expect.poll(() => papers.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  await expect.poll(() => last.evaluate((el) => {
+    const card = el.getBoundingClientRect();
+    const grid = el.closest('[data-testid=paper-cards]')!.getBoundingClientRect();
+    return card.top >= grid.top && card.bottom <= grid.bottom && card.right <= grid.right;
+  })).toBe(true);
+});
+
+test('film and paper favourites stay at the front and defaults apply to the next new photo', async ({ page }) => {
+  await page.goto(`/?open=${encodeURIComponent(ROLL)}`);
+  await expect(status(page)).toContainText(/Developed|Edited/, { timeout: 20_000 });
+  const film = 'kodak_gold_200';
+  const paper = 'kodak_2383';
+  const cards = (kind: string) => page.getByTestId(`${kind}-cards`).locator('[data-stock]');
+  const star = (id: string) => page.locator(`[data-favourite-stock="${id}"]`);
+  const stock = (id: string) => page.locator(`[data-stock="${id}"]`);
+  const selected = () => state(page, '[s.sidecar.params.filmStock, s.sidecar.params.printStock]');
+  const before = await selected();
+  await star(film).click();
+  await star(paper).click();
+  await expect(cards('film').first()).toHaveAttribute('data-stock', film);
+  await expect(cards('paper').first()).toHaveAttribute('data-stock', paper);
+  expect(await selected()).toEqual(before);
+  await stock(film).click();
+  await stock(paper).click();
+  await expect.poll(selected).toEqual([film, paper]);
+  await page.getByTestId('section-more-filmPaper').click();
+  await page.getByRole('menuitem', { name: 'Use These Stocks for New Photos' }).click();
+  await stock('kodak_ektar_100').click();
+  await expect.poll(selected).not.toEqual([film, paper]);
+  await page.reload();
+  await expect(star(film)).toHaveAttribute('aria-pressed', 'true');
+  await expect(cards('paper').first()).toHaveAttribute('data-stock', paper);
+  await page.evaluate(() => (window as unknown as { __spkOpenPaths(paths: string[]): void }).__spkOpenPaths(['/mock/Defaults/another.ARW']));
+  await expect.poll(selected).toEqual([film, paper]);
+  await star(paper).click();
+  await expect(star(paper)).toHaveAttribute('aria-pressed', 'false');
+  await expect(cards('paper').first()).not.toHaveAttribute('data-stock', paper);
+});
+
+test('the visible Film Edge and Date Back disclosures own their panel bodies', async ({ page }) => {
+  await open(page, '&allFeatures=1');
+  await page.evaluate(() => {
+    const app = (window as unknown as { __spk: { settingsStore: { setState(value: object): void } } }).__spk;
+    app.settingsStore.setState({ collapsedSections: { filmEdge: true, dateBack: true, 'v2.filmEdge': true, 'v2.dateBack': true } });
+  });
+  const edge = page.getByTestId('section-filmEdge').locator('.v2-disclosure');
+  const back = page.getByTestId('section-dateBack').locator('.v2-disclosure');
+  await edge.click();
+  await expect(edge).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByTestId('film-edge-enable')).toBeVisible();
+  await expect(page.getByTestId('film-edge-format-120_6x6')).toBeDisabled();
+  const size = page.getByTestId('format-sizes');
+  await size.getByRole('radio', { name: /120/ }).click();
+  await expect.poll(() => state(page, 's.sidecar.params.filmFrame')).toBe('120');
+  await size.getByRole('radio', { name: /135/ }).click();
+  await page.getByTestId('film-edge-enable').click();
+  await expect(page.getByTestId('format-sizes').getByRole('radio', { name: /135/ })).toBeDisabled();
+  await expect(page.getByText('Choose the film format under Film Edge.')).toBeVisible();
+  await page.getByTestId('film-edge-filter-120').click();
+  await page.getByTestId('film-edge-format-120_6x6').click();
+  await expect(page.getByTestId('film-edge-format-120_6x6')).toHaveAttribute('aria-checked', 'true');
+  await expect.poll(() => state(page, 's.sidecar.params.filmEdge.format')).toBe('120_6x6');
+  await expect(page.getByTestId('film-edge-ks65')).toBeVisible();
+  await expect(page.getByTestId('film-edge-holes')).toHaveCount(0);
+  await page.getByTestId('film-edge-ks65').click();
+  await expect(page.getByTestId('film-edge-holes')).toBeEnabled();
+  await back.click();
+  await expect(page.getByTestId('date-back-enable')).toBeVisible();
+  await edge.click();
+  await expect(page.getByTestId('film-edge-enable')).toHaveCount(0);
+  await page.locator('[data-stock="fujifilm_c200"]').click();
+  await edge.click();
+  await page.getByTestId('film-edge-filter-120').click();
+  await expect(page.getByTestId('film-edge-format-120_6x6')).toBeDisabled();
+  await expect(page.getByText('Unavailable formats were not made in this film. Select a compatible film to use them.')).toBeVisible();
+});
+
 test('open → developing → done: the status line follows the scheduler, and the last print stays meanwhile', async ({ page }) => {
   await open(page, '&renderDelay=1200');
   expect(await state(page, 's.badge')).not.toBeNull();

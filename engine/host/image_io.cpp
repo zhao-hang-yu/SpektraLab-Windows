@@ -802,6 +802,8 @@ static void raw_metadata(LibRaw& raw, Metadata& meta) {
     if (other.shutter > 0) meta.shutter_s = other.shutter;
     if (other.aperture > 0) meta.aperture = other.aperture;
     if (other.focal_len > 0) meta.focal_mm = other.focal_len;
+    if (!meta.metering_mode && raw.imgdata.shootinginfo.MeteringMode > 0)
+        meta.metering_mode = raw.imgdata.shootinginfo.MeteringMode;
     if (!meta.exposure_program && raw.imgdata.shootinginfo.ExposureProgram > 0)
         meta.exposure_program = raw.imgdata.shootinginfo.ExposureProgram;
     if (!meta.focal_35mm && raw.imgdata.lens.FocalLengthIn35mmFormat > 0)

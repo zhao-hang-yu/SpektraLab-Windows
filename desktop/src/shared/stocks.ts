@@ -12,6 +12,7 @@ export interface Stock {
   pairedFilm?: string | null;
   cover?: string | null;
   formats?: string[] | null;
+  grain?: number;
   /** A silver-emulsion film or paper; absent on colour profiles. */
   monochrome?: boolean;
   /** A film made with no anti-halation layer (its profile tags `antihalation: no`: CineStill 800T). */

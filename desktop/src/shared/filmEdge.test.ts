@@ -32,6 +32,15 @@ describe('the camera gate and date back contract', () => {
     expect(shootingText({ focal_mm: 50 })).toBe(''); // not equivalent focal length
     expect(shootingText({ shutter_s: 1 / 250, aperture: 2.8, exposure_program: 3, exposure_bias_ev: .3, focal_35mm: 50 })).toBe('1/250 F2.8 A +0.3 50mm');
   });
+  it.each([
+    ['kodak_portra_160nc', 'KODAK 160NC', 'KODAK 160NC-2'],
+    ['kodak_portra_160vc', 'KODAK 160VC', 'KODAK 160VC-2'],
+    ['kodak_portra_400nc', 'KODAK 400NC', 'KODAK 400NC-3'],
+    ['kodak_portra_400vc', 'KODAK 400VC', 'KODAK 400VC-3'],
+  ])('uses each Portra NC/VC stock’s own lettering on 135 and 120 (%s)', (id, small, medium) => {
+    expect(edgeText(catalog.stock(id), '135')).toBe(small);
+    expect(edgeText(catalog.stock(id), '120_6x6')).toBe(medium);
+  });
   it('uses released silver-stock lettering and resolves metadata identically on repeated passes', () => {
     expect(edgeText(catalog.stock('kodak_tri_x_400'), '135')).toBe('KODAK 400TX');
     expect(edgeText(catalog.stock('fujifilm_neopan_acros_100_ii'), '120_6x6')).toBe('FUJI 100 ACROS II');
@@ -40,6 +49,33 @@ describe('the camera gate and date back contract', () => {
     const resolved = resolveFilmEdgeParams(p, crop, metadata, catalog, native);
     expect(resolveFilmEdgeParams(resolved, crop, metadata, catalog, native)).toEqual(resolved);
     expect(resolved).toMatchObject({ filmEdge: { edgeText: 'KODAK 400TX', fNumber: 4 }, dateBack: { text: "'26 10 1", framing: expect.any(String) } });
+  });
+  it('uses a 2:1 strip and black perforations for full-width 135 without changing saved settings', () => {
+    const filmEdge = { ...FILM_PARAMS_DEFAULT.filmEdge, active: true, format: '135_sprocket', view: 'filed', holes: 'white' };
+    const p = { ...FILM_PARAMS_DEFAULT, filmEdge };
+    expect(gateFramed(GEOMETRY_DEFAULT, filmEdge, native).lockedRatio).toBe(2);
+    expect(fullDelta(p, ALL_FEATURES)).toMatchObject({ overscan_active: true, overscan_format: '135_sprocket', overscan_mode: 'strip', overscan_holes: 'black' });
+    expect(p.filmEdge).toMatchObject({ view: 'filed', holes: 'white' });
+  });
+  it('keeps the optional KS perforation setting on 120 only', () => {
+    const filmEdge = { ...FILM_PARAMS_DEFAULT.filmEdge, active: true, format: '120_6x6', perforation: 'ks65' };
+    const p = { ...FILM_PARAMS_DEFAULT, filmEdge };
+    expect(fullDelta(p, ALL_FEATURES).overscan_perforation).toBe('ks65');
+    expect(fullDelta({ ...p, filmEdge: { ...filmEdge, format: '135' } }, ALL_FEATURES).overscan_perforation).toBe('none');
+    expect(fullDelta(p, { ...ALL_FEATURES, overscanKs65: false })).not.toHaveProperty('overscan_perforation');
+  });
+  it('uses a movie strip and its own crop for each cine format on a compatible host', () => {
+    for (const [format, ratio] of [['8_super', 5.79 / 4.01], ['16_super', 12.35 / 7.5],
+      ['35_4perf', 24.89 / 18.67], ['65_5perf', 52.63 / 23.01], ['65_15perf', 70.41 / 52.63]] as const) {
+      const filmEdge = { ...FILM_PARAMS_DEFAULT.filmEdge, active: true, format, view: 'filed', edgeText: 'FACTORY MARK' };
+      const p = { ...FILM_PARAMS_DEFAULT, filmEdge, dateBack: { ...FILM_PARAMS_DEFAULT.dateBack, active: true } };
+      expect(gateFramed(GEOMETRY_DEFAULT, filmEdge, native).lockedRatio).toBe(ratio);
+      expect(fullDelta(p)).toMatchObject({ overscan_active: true, overscan_format: format, overscan_mode: 'strip',
+        overscan_edge_text: '', date_imprint_active: false });
+      const olderHost = fullDelta(p, { ...ALL_FEATURES, overscanCine: false });
+      expect(olderHost.overscan_active).toBe(false);
+      expect(olderHost).not.toHaveProperty('overscan_format', format);
+    }
   });
   it('holds a physical gate ratio, with post geometry identity and original crop retained in the sidecar', () => {
     const p = { ...FILM_PARAMS_DEFAULT, filmEdge: { ...FILM_PARAMS_DEFAULT.filmEdge, active: true, format: '135_half' } };
@@ -63,6 +99,19 @@ describe('the camera gate and date back contract', () => {
     const p = { ...FILM_PARAMS_DEFAULT, dateBack: d };
     expect(sourceGeometryFor(p, GEOMETRY_DEFAULT)).toBeNull();
     expect(sourceGeometryFor(p, crop)).toBe(crop);
+  });
+  it('writes perforation data in camera order, and only for a supported perforated gate', () => {
+    const p = {
+      ...FILM_PARAMS_DEFAULT,
+      filmEdge: { ...FILM_PARAMS_DEFAULT.filmEdge, active: true, format: '135' },
+      dateBack: { ...FILM_PARAMS_DEFAULT.dateBack, active: true, face: 'perfs' },
+    };
+    const m = { exposure_program: 3, metering_mode: 5, shutter_s: 1 / 180, aperture: 8, exposure_bias_ev: 0 };
+    const resolved = resolveFilmEdgeParams(p, GEOMETRY_DEFAULT, m, catalog, native);
+    expect(fullDelta(resolved, ALL_FEATURES)).toMatchObject({ date_imprint_active: true, date_imprint_style: 'data', date_imprint_data_placement: 'perfs', date_imprint_text: 'Av|{meter:multi}|180|F8|±0.0' });
+    expect(fullDelta(resolved, { ...ALL_FEATURES, datePerforationData: false })).toMatchObject({ date_imprint_active: false });
+    expect(fullDelta({ ...resolved, filmEdge: { ...resolved.filmEdge, active: false } }, ALL_FEATURES)).toMatchObject({ date_imprint_active: false });
+    expect(resolveFilmEdgeParams(p, GEOMETRY_DEFAULT, {}, catalog, native).dateBack.text).toBe('');
   });
   it('scales date-only physical pitch on the cut and emits real metadata, never a stale other-frame date', () => {
     const p = { ...FILM_PARAMS_DEFAULT, filmFormatMM: 36, dateBack: { ...FILM_PARAMS_DEFAULT.dateBack, active: true, withData: true } };

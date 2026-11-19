@@ -29,7 +29,7 @@ export class Workspace {
   async status(){return this.files.call<Record<string,unknown>>('status')}
   async start(){
     if(!this.catalog){const file=process.env.SPEKTRALAB_AGENT_CATALOG??join(here,'StockCatalog.json');this.catalog=new StockCatalog(JSON.parse(await readFile(file,'utf8')).stocks)}
-    if(!this.engine){this.engine=new NativeHost();setHost(this.engine);this.hello=await this.engine.result<HelloResult>('hello');this.gate=featureGate(this.hello.capabilities?.backend?.unsupported_features,this.rendering.diBlueCompensation,this.hello.view_options?.includes('no_film'))}
+    if(!this.engine){this.engine=new NativeHost();setHost(this.engine);this.hello=await this.engine.result<HelloResult>('hello');this.gate=featureGate(this.hello.capabilities?.backend?.unsupported_features,this.rendering.diBlueCompensation,this.hello.view_options?.includes('no_film'),this.hello.capabilities?.backend?.film_light_leak === true, this.hello.capabilities?.backend?.date_perforation_data === true, this.hello.capabilities?.backend?.overscan_ks65 === true, this.hello.capabilities?.backend?.overscan_cine === true)}
   }
   async load(path:string){
     await this.start();path=absolute(path);
@@ -98,7 +98,7 @@ export class Workspace {
     try{
       this.rendering=renderPreferences(await this.files.call('rendering'));
       await this.start();
-      this.gate=featureGate(this.hello.capabilities?.backend?.unsupported_features,this.rendering.diBlueCompensation,this.hello.view_options?.includes('no_film'));
+      this.gate=featureGate(this.hello.capabilities?.backend?.unsupported_features,this.rendering.diBlueCompensation,this.hello.view_options?.includes('no_film'),this.hello.capabilities?.backend?.film_light_leak === true, this.hello.capabilities?.backend?.date_perforation_data === true, this.hello.capabilities?.backend?.overscan_ks65 === true, this.hello.capabilities?.backend?.overscan_cine === true);
       if(name==='get_schema')return{body:{version:1,sections:['params','adjustments','geometry','decode'],fields:fields(this.catalog!)}};
       if(name==='list_stocks')return{body:{films:this.catalog!.films,papers:this.catalog!.papers}};
       if(name==='list_recipes')return{body:{recipes:decodeRecipes(await this.files.call('recipes'))}};

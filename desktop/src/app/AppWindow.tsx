@@ -20,7 +20,7 @@ import { useSession } from '../state/session';
 import { DevelopTools, EditTools, LatitudeMeter } from '../edit/rails';
 import { InfoStrip, Picture, Toolbar } from '../edit/EditWorkspace';
 import { FullWindowPage, LibraryCentre, LibraryColumn } from '../library/LibraryWorkspace';
-import { Browser } from '../library/Browser';
+import { Browser } from '../library/LibraryBrowser';
 import { AboutDialog } from '../windows/Dialogs';
 import { FolderImportDialog } from '../windows/FolderImportDialog';
 import { ExportDialog } from '../export/ExportDialog';

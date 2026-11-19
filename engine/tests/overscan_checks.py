@@ -10,6 +10,7 @@ seeded. Against an engine from before RFC-032 the first check fails
 """
 import argparse, json, os, sys, tempfile
 from pathlib import Path
+from contextlib import nullcontext
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -751,12 +752,91 @@ def main():
             check(f"{fmt} prints the data beside it without moving the date",
                   both.sum() > dd.sum() + 60 and (both & dd).sum() == dd.sum(), f"{both.sum()} px against {dd.sum()}")
 
+        if e.capabilities().get('backend', {}).get('overscan_ks65'):
+            square = frame(900, 900)
+            p = dict(overscan_active=True, overscan_format='120_6x6', overscan_edge_text='')
+            plain = render(e, square, p, 'full')
+            slit = render(e, square, dict(p, overscan_perforation='ks65'), 'full')
+            black = render(e, square, dict(p, overscan_perforation='ks65', overscan_holes='black'), 'full')
+            check('KS perforations do not resize the 120 canvas', plain.shape == slit.shape)
+            delta_rows = np.where(np.max(np.abs(slit[..., :3].astype(int) - black[..., :3].astype(int)), axis=2) > 10000)[0]
+            check('both long edges contain KS holes and the picture is unchanged', delta_rows.size > 500 and
+                  np.any(delta_rows < slit.shape[0] / 10) and np.any(delta_rows > 9 * slit.shape[0] / 10) and
+                  np.array_equal(slit[slit.shape[0] // 3: 2 * slit.shape[0] // 3], black[black.shape[0] // 3: 2 * black.shape[0] // 3]))
+
+        if e.capabilities().get('backend', {}).get('overscan_cine'):
+            for fmt, across, along, width, run, rows in (
+                ('8_super', 5.79, 4.01, 7.976, 7.976 * 2 / 3, (False, True)),
+                ('16_super', 12.35, 7.50, 15.95, 15.95 * 9 / 16, (True, False)),
+                ('35_4perf', 24.89, 18.67, 35.0, 4 * 4.740, (True, True)),
+                ('65_5perf', 52.63, 23.01, 64.97, 5 * 4.75, (True, True)),
+                ('65_15perf', 52.63, 70.41, 64.97, 15 * 4.75, (True, True)),
+            ):
+                # In this orientation the film runs down the picture: t-low is on the right.
+                im = frame(round(800 * across / max(across, along)), round(800 * along / max(across, along)))
+                p = dict(overscan_active=True, overscan_format=fmt, overscan_fog=0.0)
+                white = render(e, im, p, 'full')
+                black = render(e, im, dict(p, overscan_holes='black'), 'full')
+                px_ = max(across, along) / max(im.shape[:2])
+                h, w = white.shape[:2]
+                check(f'{fmt} strip spans its physical gauge and advance',
+                      abs(w * px_ - width) <= px_ and abs(h * px_ - run) <= 2 * px_, str((w, h)))
+                holes = changed(white, black)
+                check(f'{fmt} holes are on the intended edges',
+                      holes[:, :w // 3].any() == rows[0] and holes[:, -w // 3:].any() == rows[1]
+                      and not holes[:, w // 3:2 * w // 3].any())
+                marked = render(e, im, dict(p, overscan_mode='filed', overscan_edge_text='FUJI 200',
+                                            date_imprint_active=True, date_imprint_text="'26 11 15"), 'full')
+                check(f'{fmt} always renders an unmarked strip', np.array_equal(white, marked))
+                sideways = render(e, np.ascontiguousarray(im.transpose(1, 0, 2)), p, 'full')
+                check(f'{fmt} rotates the strip with the gate', sideways.shape[:2] == (w, h))
+                if fmt in ('8_super', '16_super'):
+                    mid = black[:, w // 3:2 * w // 3, :3].mean(axis=(1, 2))
+                    gap = max(3, round(0.20 / px_))
+                    check(f'{fmt} samples the neighbouring exposures past both frame lines',
+                          mid[:gap].mean() > mid[:h // 5].min() + 1200
+                          and mid[-gap:].mean() > mid[-h // 5:].min() + 1200)
+
+        if e.capabilities().get('backend', {}).get('date_perforation_data'):
+            data = dict(date_imprint_active=True, date_imprint_style='data', date_imprint_text='Av|{meter:multi}|180|F8|±0.0')
+            holes = render(e, img, dict(S135, **data, date_imprint_data_placement='perfs'))
+            gap = render(e, img, dict(S135, **data, date_imprint_data_placement='gap'))
+            ys, xs = np.where(changed(holes, bare135))
+            check('perforation data lies along the strip above the gate, not in the frame gap',
+                  len(xs) > 100 and ys.max() < holes.shape[0] * 0.2 and xs.max() - xs.min() > 10 / px)
+            check('gap face remains distinct from the perforation face', not np.array_equal(gap, holes))
+            plain = render(e, img, {'overscan_active': False})
+            check('perforation data is suppressed without a film edge', np.array_equal(plain, render(e, img, dict(data, date_imprint_data_placement='perfs'))))
+
+        if e.capabilities().get('backend', {}).get('film_light_leak'):
+            plain = render(e, img, {}, 'full')
+            burn = dict(leak_edge=2.0, leak_seed=19)
+            with_burn = render(e, img, burn, 'full')
+            check('edge burn does not pad a bare frame', with_burn.shape == plain.shape)
+            check('edge burn alone changes film exposure', not np.array_equal(with_burn, plain))
+            check('edge burn repeats for the same seed', np.array_equal(with_burn, render(e, img, burn, 'full')))
+            check('another leak seed changes the burn', not np.array_equal(with_burn, render(e, img, dict(burn, leak_seed=71), 'full')))
+            for kind in ('auto', 'band', 'wash', 'spot'):
+                p = dict(leak_kind=kind, leak_amount=1.0, leak_seed=19)
+                kind_only = render(e, img, p, 'full')
+                together = render(e, img, dict(p, leak_edge=2.0), 'full')
+                check(f'{kind} and edge burn act independently', not np.array_equal(kind_only, plain)
+                      and not np.array_equal(together, kind_only) and not np.array_equal(together, with_burn))
+            edged = render(e, img, S135, 'full')
+            edged_burn = render(e, img, dict(S135, **burn), 'full')
+            check('edge burn also acts on the overscan canvas without moving it', edged.shape == edged_burn.shape
+                  and not np.array_equal(edged, edged_burn))
+
     # --- CineStill 800T's own edge (the owner's screenshots, 2026-10-23) ---
     # A product profile, so the engine gets the product's profiles laid over its resources.
     # Each bar below is red on the engine before the stock had a layout of its own, which drew
     # Kodak's (name caps 1.22 mm, "13" 1.40 mm tall 0.14 mm in, "12A" 17.5 mm after "12", the
     # name on 120's top band, tan ink).
-    with tempfile.TemporaryDirectory() as tmp, spk.Engine(dylib=a.dylib, resources=product_overlay(tmp)) as e:
+    from spk_test_paths import resolve_resources
+    staged = resolve_resources(library=a.dylib)
+    has_product = (staged / 'vulkan').is_dir() and (staged / 'profiles' / 'cinestill_800t.json').is_file()
+    with (nullcontext(None) if has_product else tempfile.TemporaryDirectory()) as tmp, spk.Engine(
+            dylib=a.dylib, resources=staged if has_product else product_overlay(tmp)) as e:
         CS = dict(BASE, film_stock="cinestill_800t", overscan_active=True, overscan_edge_text="CINESTILL 800T",
                   overscan_frame_number=12, overscan_camera_seed=7, overscan_frame_seed=3)
 

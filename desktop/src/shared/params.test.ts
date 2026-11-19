@@ -46,6 +46,15 @@ describe('the wire', () => {
     expect(names.has('film_stock')).toBe(true);
   });
 
+  it('sends seed and independent strengths as film-side edits only to a capable host', () => {
+    const p = decodeFilmParams({ filmFrame: '120', effects: { leakKind: 'wash', leakAmount: 2, leakEdge: 0.5, leakSeed: 71 } });
+    expect(fullDelta(p, featureGate([]))).not.toHaveProperty('leak_edge');
+    expect(fullDelta(p, ALL_FEATURES)).toMatchObject({ leak_kind: 'wash', leak_amount: 2, leak_edge: 0.5, leak_seed: 71, overscan_format: '120_6x6' });
+    const reset = delta({ ...p, effects: { ...p.effects, leakKind: 'off', leakEdge: 0 } }, p);
+    expect(reset.delta).toMatchObject({ leak_kind: 'off', leak_edge: 0 });
+    expect([...reset.layers]).toEqual(['shoot']);
+  });
+
   it('a print-side edit is a print-layer delta; a film change touches both layers', () => {
     const a = FILM_PARAMS_DEFAULT;
     const b = { ...a, printBrightnessStops: 1 };

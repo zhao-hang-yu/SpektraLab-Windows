@@ -157,7 +157,7 @@ export function SettingsDialog() {
                 onChange={(v) => {
                   set('diBlueCompensation', v);
                   const s = sessionStore.getState();
-                  sessionStore.setState({ gate: featureGate(s.unsupported, v, s.hello?.view_options?.includes('no_film') ?? false) });
+                  sessionStore.setState({ gate: featureGate(s.unsupported, v, s.hello?.view_options?.includes('no_film') ?? false, s.hello?.capabilities?.backend?.film_light_leak === true, s.hello?.capabilities?.backend?.date_perforation_data === true, s.hello?.capabilities?.backend?.overscan_ks65 === true, s.hello?.capabilities?.backend?.overscan_cine === true) });
                 }}
               />
             </div>

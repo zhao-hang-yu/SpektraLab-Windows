@@ -13,7 +13,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { tz } from '../i18n';
-import { ScrubSlider, ToggleRow, signed } from '../controls/controls';
+import { PillMenu, ScrubSlider, ToggleRow, signed } from '../controls/controls';
 import {
   setAdjustments, setParams, selectFilmStock, selectPrintStock, setFilmFrame, shownAdjustments, useSession, zoomTo, zoomToFit,
   cameraExposureTotal, setCameraExposureTotal, resetCameraExposure, beginGesture, resetAdjustments, resetEnlarger, resetCrop, resetFilmStock,
@@ -28,6 +28,8 @@ import {
   type CropAspect, type Geometry,
 } from '@shared/geometry';
 import type { Stock, StockCatalog } from '@shared/stocks';
+import { newPhotoStocks } from '@shared/newPhotoDefaults';
+import { edgeEffective, edgeFormat } from '@shared/filmEdge';
 import { NavigatorSection, EnlargerSection, FilmEdgeSection, DateBackSection } from '../panels/LeftRail';
 import { CameraSection, CurveSection, ColorBalanceSection } from '../panels/RightRail';
 import { PairSection } from '../panels/PairSection';
@@ -77,8 +79,8 @@ function setAllSections(from: Element | null, closed: boolean) {
  * ··· (Reset, Open All Sections, Close All Sections). Ctrl+click on the head
  * opens or closes every section of the rail.
  */
-export function V2Section({ id, title, summary, onReset, resetEnabled = true, defaultClosed = false, more = true, children, testId }: {
-  id: string; title: string; summary?: string; onReset?: () => void; resetEnabled?: boolean; defaultClosed?: boolean; more?: boolean; children: ReactNode; testId?: string;
+export function V2Section({ id, title, summary, onReset, resetEnabled = true, defaultClosed = false, more = true, extraMenuItems = [], children, testId }: {
+  id: string; title: string; summary?: string; onReset?: () => void; resetEnabled?: boolean; defaultClosed?: boolean; more?: boolean; extraMenuItems?: MenuEntry[]; children: ReactNode; testId?: string;
 }) {
   const key = `v2.${id}`;
   const closed = useSettings((s) => s.collapsedSections[key] ?? defaultClosed);
@@ -101,6 +103,8 @@ export function V2Section({ id, title, summary, onReset, resetEnabled = true, de
         )}
         {more && <MenuButton className="v2-head-btn" label={`${title}: ${tz('More', '更多')}`} align="right" testId={`section-more-${id}`} items={() => [
           ...(onReset ? [{ id: `reset-${id}`, label: `${tz('Reset', '重置')} ${title}`, run: onReset, enabled: resetEnabled }, { separator: true } as const] : []),
+          ...extraMenuItems,
+          ...(extraMenuItems.length ? [{ separator: true } as const] : []),
           { id: 'open-all', label: tz('Open All Sections', '展开所有部分'), run: () => setAllSections(head.current, false), enabled: true },
           { id: 'close-all', label: tz('Close All Sections', '收起所有部分'), run: () => setAllSections(head.current, true), enabled: true },
         ]}><G name="sectionMore" /></MenuButton>}
@@ -166,19 +170,28 @@ function FilterCapsule<T extends string>({ noun, value, filters, onChange, testI
  * family's tone (colour negative, slide, cine, black and white, paper), never
  * an empty box.
  */
-function StockCard({ stock, catalog, on, disabled, waits, title, label, onPick, cropped, kind }: {
+function StockCard({ stock, catalog, on, disabled, waits, title, label, onPick, cropped, kind, favourite, onFavourite }: {
   stock: Stock | null; catalog: StockCatalog; on: boolean; disabled: boolean; waits?: boolean; title: string; label?: string;
-  onPick: () => void; cropped: boolean; kind: 'film' | 'paper';
+  onPick: () => void; cropped: boolean; kind: 'film' | 'paper'; favourite?: boolean; onFavourite?: () => void;
 }) {
   const cover = stock ? catalog.coverURL(stock.id) : null;
   const family = !stock ? 'none' : stock.monochrome ? 'bw' : stock.use === 'cine' ? 'cine' : stock.type === 'positive' ? 'positive' : kind === 'paper' ? 'paper' : 'negative';
+  const favouriteLabel = favourite
+    ? tz(`Remove ${stock?.name} from favourites`, `取消收藏 ${stock?.name}`)
+    : tz(`Favourite ${stock?.name}`, `收藏 ${stock?.name}`);
   return (
-    <button role="option" aria-selected={on} className={`v2-card ${kind}` + (on ? ' on' : '') + (waits ? ' waits' : '')} disabled={disabled} title={title}
-      aria-label={label ?? title} onClick={onPick} data-stock={stock?.id ?? 'none'}>
-      <span className={`v2-card-face ${family}` + (cover ? ' cover' : '') + (cropped ? '' : ' whole')} style={cover ? { backgroundImage: `url("${cover}")` } : undefined} />
-      {stock?.use === 'cine' && kind === 'film' && <span className="v2-cine">CINE</span>}
-      <span className="v2-card-name">{stock ? cardName(catalog, stock.id) : tz('No paper', '不印放')}</span>
-    </button>
+    <div className="v2-card-slot" role="group">
+      <button role="option" aria-selected={on} className={`v2-card ${kind}` + (on ? ' on' : '') + (waits ? ' waits' : '')} disabled={disabled} title={title}
+        aria-label={label ?? title} onClick={onPick} data-stock={stock?.id ?? 'none'}>
+        <span className={`v2-card-face ${family}` + (cover ? ' cover' : '') + (cropped ? '' : ' whole')} style={cover ? { backgroundImage: `url("${cover}")` } : undefined} />
+        {stock?.use === 'cine' && kind === 'film' && <span className="v2-cine">CINE</span>}
+        <span className="v2-card-name">{stock ? cardName(catalog, stock.id) : tz('No paper', '不印放')}</span>
+      </button>
+      {onFavourite && <button type="button" className="v2-card-favourite" aria-pressed={favourite}
+        title={favouriteLabel} aria-label={favouriteLabel} onClick={onFavourite} data-favourite-stock={stock?.id}>
+        <span aria-hidden="true">{favourite ? '★' : '☆'}</span>
+      </button>}
+    </div>
   );
 }
 
@@ -192,40 +205,67 @@ function FilmPaper() {
   const positive = catalog.isPositive(p.filmStock);
   const keepFilm = FILM_FILTERS.find((f) => f.id === filmFilter)!.keep;
   const keepPaper = PAPER_FILTERS.find((f) => f.id === paperFilter)!.keep;
-  const films = catalog.films.filter(keepFilm);
-  const papers = catalog.papers.filter(keepPaper);
-  const strip = useRef<HTMLDivElement>(null);
+  const favourites = useSettings((s) => s.favouriteStocks);
+  const filmGrid = useRef<HTMLDivElement>(null);
+  const paperGrid = useRef<HTMLDivElement>(null);
+  const favouriteID = (id: string) => {
+    const base = id.replace(/_push[0-9]+$/, '');
+    return catalog.stock(base) ? base : id;
+  };
+  const isFavourite = (id: string) => favourites.includes(favouriteID(id));
+  const ordered = (stocks: Stock[]) => [...stocks.filter((s) => isFavourite(s.id)), ...stocks.filter((s) => !isFavourite(s.id))];
+  const films = ordered(catalog.films.filter(keepFilm));
+  const papers = ordered(catalog.papers.filter(keepPaper));
+  const toggleFavourite = (stock: Stock, grid: HTMLDivElement | null) => {
+    const st = settingsStore.getState();
+    const id = favouriteID(stock.id);
+    const saved = st.favouriteStocks;
+    if (saved.includes(id)) st.set('favouriteStocks', saved.filter((s) => s !== id));
+    else {
+      st.set('favouriteStocks', [...saved, id]);
+      if (grid) grid.scrollTop = 0;
+    }
+  };
+  const saveDefaults = () => {
+    const st = settingsStore.getState();
+    const pair = newPhotoStocks(catalog, { newPhotoFilmStock: p.filmStock, newPhotoPrintStock: p.printStock });
+    st.set('newPhotoFilmStock', pair.filmStock);
+    st.set('newPhotoPrintStock', pair.printStock);
+  };
   return (
-    <V2Section id="filmPaper" title={tz('Film & Paper', '胶片与相纸')} onReset={resetFilmStock} resetEnabled={editable}>
+    <V2Section id="filmPaper" title={tz('Film & Paper', '胶片与相纸')} onReset={resetFilmStock} resetEnabled={editable}
+      extraMenuItems={[{ id: 'stocks-new-photo-defaults', label: tz('Use These Stocks for New Photos', '设为新照片默认'),
+        enabled: editable && !!catalog.stock(p.filmStock) && (!p.scanFilm || positive), run: saveDefaults }]}>
       <div className="v2-filter-row">
         <FilterCapsule noun={tz('Film', '胶片')} value={filmFilter} filters={FILM_FILTERS} onChange={setFilmFilter} testId="film-filter" />
         <button className={'v2-square-btn' + (cropped ? ' on' : '')} aria-pressed={cropped} data-testid="cards-cropped"
           title={tz('Crop Pictures to the Cards', '图片裁切以填满卡片')} aria-label={tz('Crop Pictures to the Cards', '图片裁切以填满卡片')}
           onClick={() => setUi({ cardsCropped: !cropped })}><G name="cropToCard" /></button>
       </div>
-      <div className="v2-cards" role="listbox" aria-label={tz('Film', '胶片')} data-testid="film-cards">
+      <div className="v2-cards" ref={filmGrid} role="listbox" aria-label={tz('Film', '胶片')} data-testid="film-cards">
         {films.map((f) => (
-          <StockCard key={f.id} kind="film" stock={f} catalog={catalog} on={f.id === p.filmStock} disabled={!editable} title={f.name} cropped={cropped} onPick={() => selectFilmStock(f.id)} />
+          <StockCard key={f.id} kind="film" stock={f} catalog={catalog} on={f.id === p.filmStock} disabled={!editable} title={f.name} cropped={cropped} onPick={() => selectFilmStock(f.id)}
+            favourite={isFavourite(f.id)} onFavourite={() => toggleFavourite(f, filmGrid.current)} />
         ))}
         {!films.length && <div className="v2-cards-empty dim">{tz('No film in this family.', '此类别没有胶片。')}</div>}
       </div>
       <div className="v2-filter-row">
         <FilterCapsule noun={tz('Paper', '相纸')} value={paperFilter} filters={PAPER_FILTERS} onChange={setPaperFilter} testId="paper-filter" />
       </div>
-      <div className="v2-strip" ref={strip} role="listbox" aria-label={tz('Paper', '相纸')} data-testid="paper-cards"
-        onWheel={(e) => { if (e.shiftKey && strip.current) strip.current.scrollLeft += e.deltaY; }}>
-        {paperFilter === 'all' && (
-          <StockCard kind="paper" stock={null} catalog={catalog} on={positive || p.scanFilm} disabled={!editable || positive} title={tz('No paper', '不印放')} cropped={cropped}
-            onPick={() => setParams((q) => ({ ...q, scanFilm: true, digitalIntermediate: false }))} />
-        )}
+      <div className="v2-cards v2-paper-cards" ref={paperGrid} role="listbox" aria-label={tz('Paper', '相纸')} data-testid="paper-cards">
         {papers.map((x) => {
           const waits = positive || !catalog.canPrint(p.filmStock, x.id);
           return (
             <StockCard key={x.id} kind="paper" stock={x} catalog={catalog} on={!positive && !p.scanFilm && x.id === p.printStock} disabled={!editable || waits} waits={waits}
               title={waits ? (positive ? tz('A slide is scanned, never printed.', '反转片直接扫描，不印放。') : tz('Silver on silver, colour on colour.', '黑白配黑白，彩色配彩色。')) : x.name}
-              label={waits ? `${x.name}, ${tz('not for this film', '不适用于此胶片')}` : x.name} cropped={cropped} onPick={() => selectPrintStock(x.id)} />
+              label={waits ? `${x.name}, ${tz('not for this film', '不适用于此胶片')}` : x.name} cropped={cropped} onPick={() => selectPrintStock(x.id)}
+              favourite={isFavourite(x.id)} onFavourite={() => toggleFavourite(x, paperGrid.current)} />
           );
         })}
+        {paperFilter === 'all' && (
+          <StockCard kind="paper" stock={null} catalog={catalog} on={positive || p.scanFilm} disabled={!editable || positive} title={tz('No paper', '不印放')} cropped={cropped}
+            onPick={() => setParams((q) => ({ ...q, scanFilm: true, digitalIntermediate: false }))} />
+        )}
       </div>
       <FilmExposure />
     </V2Section>
@@ -284,24 +324,31 @@ function Format() {
   const p = useSession((s) => s.sidecar.params);
   const editable = useSession((s) => !!s.selection && !s.batchExporting);
   const noLayer = useSession((s) => s.catalog.hasNoAntihalationLayer(s.sidecar.params.filmStock));
+  const leakSupported = useSession((s) => s.gate.filmLightLeak);
+  const noFilm = useSession((s) => s.sidecar.noFilm);
+  const gate = useSession((s) => s.gate);
+  const edgeOwnsFormat = edgeEffective(p.filmEdge, gate, noFilm);
+  const selectedEdge = edgeFormat(p.filmEdge.format);
+  const leakDisabled = !editable || noFilm;
   const e = p.effects;
   const setE = (patch: Partial<typeof e>) => setParams((q) => ({ ...q, effects: { ...q.effects, ...patch } }));
   const sizes = FILM_FRAMES_STILL.filter((f) => f.id !== 'Custom');
   return (
-    <V2Section id="format" title={tz('Format', '画幅')} summary={`${p.filmFrame}  ·  ${tz('Grain', '颗粒')} ${(p.grainActive ? e.grain : 0).toFixed(2)}×`}
+    <V2Section id="format" title={tz('Format', '画幅')} summary={`${edgeOwnsFormat ? selectedEdge?.label ?? p.filmEdge.format : p.filmFrame}  ·  ${tz('Grain', '颗粒')} ${(p.grainActive ? e.grain : 0).toFixed(2)}×`}
       onReset={() => { setFilmFrame('135'); setParams((q) => ({ ...q, grainActive: true, halationActive: true, effects: { ...q.effects, grain: EFFECTS_DEFAULT.grain, halation: EFFECTS_DEFAULT.halation, antihalationRemoved: false } })); }} resetEnabled={editable}>
       <div className="v2-size-cards" role="radiogroup" aria-label={tz('Size', '尺寸')} data-testid="format-sizes">
         {sizes.map((f) => {
           // The frame's shape, drawn to scale inside the card (PC-E1): the longest frame fills 44 epx.
           const k = 44 / Math.max(...sizes.map((x) => x.long));
           return (
-            <button key={f.id} role="radio" aria-checked={p.filmFrame === f.id} className={'v2-size' + (p.filmFrame === f.id ? ' on' : '')} disabled={!editable} onClick={() => setFilmFrame(f.id)}>
+            <button key={f.id} role="radio" aria-checked={!edgeOwnsFormat && p.filmFrame === f.id} className={'v2-size' + (!edgeOwnsFormat && p.filmFrame === f.id ? ' on' : '')} disabled={!editable || edgeOwnsFormat} onClick={() => setFilmFrame(f.id)}>
               <i className="v2-size-frame" style={{ width: Math.max(8, f.long * k), height: Math.max(6, f.short * k) }} />
               <b>{f.id}</b><small>{`${f.short} × ${f.long}`}</small>
             </button>
           );
         })}
       </div>
+      {edgeOwnsFormat && <p className="film-edge-hint">{tz('Choose the film format under Film Edge.', '片边已开启，请在下方「片边」中选择画幅。')}</p>}
       {noLayer
         ? <ToggleRow label={tz('Remove anti-halation layer', '去除防光晕层')} sublabel={tz('This film has none', '此胶片没有防光晕层')} on disabled onChange={() => {}} />
         : <ToggleRow label={tz('Remove anti-halation layer', '去除防光晕层')} sublabel={tz('Experimental simulation for all stocks', '适用于所有胶片的实验性模拟')} on={e.antihalationRemoved} disabled={!editable} onChange={(v) => setE({ antihalationRemoved: v })} testId="antihalation-toggle" />}
@@ -309,6 +356,22 @@ function Format() {
         onChange={(v) => setParams((q) => ({ ...q, grainActive: v > 0, effects: { ...q.effects, grain: v > 0 ? v : q.effects.grain } }))} />
       <Strength label={tz('Halation', '光晕')} value={e.halation} on={p.halationActive} range={EFFECT_RANGES.halation} testId="halation-strength"
         onChange={(v) => setParams((q) => ({ ...q, halationActive: v > 0, effects: { ...q.effects, halation: v > 0 ? v : q.effects.halation } }))} />
+      {leakSupported && <>
+        <PillMenu label={tz('Light Leak', '漏光')} value={e.leakKind} disabled={leakDisabled} testId="light-leak-kind"
+          options={[
+            { value: 'off', label: tz('Off', '关闭') }, { value: 'auto', label: tz('Auto', '自动') },
+            { value: 'band', label: tz('Band', '光带') }, { value: 'wash', label: tz('Wash', '漫光') },
+            { value: 'spot', label: tz('Spot', '光斑') },
+          ]} onChange={(leakKind) => setE({ leakKind })} />
+        <ScrubSlider label={tz('Leak Strength', '漏光强度')} value={e.leakAmount} disabled={leakDisabled || e.leakKind === 'off'}
+          range={[0, 4]} snap={0.25} onChange={(leakAmount) => setE({ leakAmount })} />
+        <ScrubSlider label={tz('Edge Burn', '边缘漏光')} value={e.leakEdge} disabled={leakDisabled}
+          range={[0, 4]} snap={0.25} testId="edge-burn" onChange={(leakEdge) => setE({ leakEdge })} />
+        {(e.leakKind !== 'off' || e.leakEdge > 0) && <div className="row">
+          <button className="pill-menu" disabled={leakDisabled} onClick={() => setE({ leakSeed: e.leakSeed % 2147483647 + 1 })}>{tz('Shuffle Leak', '换一种漏光')}</button>
+          <button className="pill-menu" disabled={leakDisabled || e.leakSeed === 0} onClick={() => setE({ leakSeed: 0 })}>{tz('Camera’s Own', '跟随机身')}</button>
+        </div>}
+      </>}
     </V2Section>
   );
 }
@@ -322,8 +385,8 @@ export function DevelopTools({ navigator }: { navigator: 'well' | 'line' | 'hidd
       <div className="v2-rail-scroll" data-testid="develop-sections">
         <FilmPaper />
         <Format />
-        {gate.overscan && <V2Section id="filmEdge" title={tz('Film Edge', '片边')}><Host><FilmEdgeSection /></Host></V2Section>}
-        {gate.dateImprint && <V2Section id="dateBack" title={tz('Date Back', '日期背')}><Host><DateBackSection /></Host></V2Section>}
+        {gate.overscan && <V2Section id="filmEdge" title={tz('Film Edge', '片边')}><Host><FilmEdgeSection embedded /></Host></V2Section>}
+        {gate.dateImprint && <V2Section id="dateBack" title={tz('Date Back', '日期背')}><Host><DateBackSection embedded /></Host></V2Section>}
         {gate.overscan && <Host testId="pair-host"><PairSection /></Host>}
       </div>
     </>

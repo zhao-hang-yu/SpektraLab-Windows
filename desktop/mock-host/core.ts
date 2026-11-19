@@ -251,6 +251,10 @@ export class MockHost {
         gpu: 'Mock GPU (no engine)',
         gpu_available: true,
         render_core: 'mock',
+        film_light_leak: true,
+        date_perforation_data: true,
+        overscan_ks65: true,
+        overscan_cine: true,
         unsupported_features: this.opts.realisticUnsupported ? UNSUPPORTED_ON_PORT : [],
       },
     };
